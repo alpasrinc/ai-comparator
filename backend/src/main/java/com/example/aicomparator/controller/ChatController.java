@@ -52,9 +52,10 @@ public CompareResponse compare(
         String content = openAiProvider.sendMessage(request.message().trim());
 
         return new AiResponse(
-                AiProviderType.OPENAI.name(),
-                content
-        );
+        null,
+        AiProviderType.OPENAI.name(),
+        content
+);
     }
 
     @PostMapping("/anthropic")
@@ -64,9 +65,10 @@ public CompareResponse compare(
         String content = anthropicProvider.sendMessage(request.message().trim());
 
         return new AiResponse(
-                AiProviderType.ANTHROPIC.name(),
-                content
-        );
+        null,
+        AiProviderType.ANTHROPIC.name(),
+        content
+);
     }
 
     @PostMapping("/gemini")
@@ -76,8 +78,9 @@ public CompareResponse compare(
         String content = geminiProvider.sendMessage(request.message().trim());
 
         return new AiResponse(
-                AiProviderType.GEMINI.name(),
-                content
-        );
+        null,
+        AiProviderType.GEMINI.name(),
+        content
+);
     }
 }

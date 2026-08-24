@@ -16,16 +16,19 @@ public class AiComparisonService {
 
     private final List<AiProvider> providers;
     private final ExecutorService aiExecutor;
+    private final ConversationService conversationService;
 
     public AiComparisonService(
             List<AiProvider> providers,
-            ExecutorService aiExecutor
+            ExecutorService aiExecutor,
+            ConversationService conversationService
     ) {
         this.providers = providers.stream()
                 .sorted(Comparator.comparing(AiProvider::getProviderType))
                 .toList();
 
         this.aiExecutor = aiExecutor;
+        this.conversationService = conversationService;
     }
 
     public CompareResponse compare(String userMessage) {
@@ -33,6 +36,7 @@ public class AiComparisonService {
                 providers.stream()
                         .map(provider -> CompletableFuture.supplyAsync(
                                 () -> new AiResponse(
+                                        null,
                                         provider.getProviderType().name(),
                                         provider.sendMessage(userMessage)
                                 ),
@@ -44,6 +48,9 @@ public class AiComparisonService {
                 .map(CompletableFuture::join)
                 .toList();
 
-        return new CompareResponse(responses);
+        return conversationService.saveComparison(
+                userMessage,
+                responses
+        );
     }
 }
