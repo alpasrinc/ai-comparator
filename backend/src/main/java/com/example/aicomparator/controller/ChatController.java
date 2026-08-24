@@ -11,9 +11,9 @@ import com.example.aicomparator.ai.AnthropicProvider;
 import com.example.aicomparator.ai.GeminiProvider;
 import com.example.aicomparator.ai.OpenAiProvider;
 import com.example.aicomparator.dto.AiResponse;
-import com.example.aicomparator.dto.AnthropicChatRequest;
-import com.example.aicomparator.dto.GeminiChatRequest;
-import com.example.aicomparator.dto.OpenAiChatRequest;
+
+import com.example.aicomparator.dto.ChatRequest;
+
 import com.example.aicomparator.entity.AiProviderType;
 
 @RestController
@@ -36,7 +36,7 @@ public class ChatController {
 
     @PostMapping("/openai")
     public AiResponse sendToOpenAi(
-            @Valid @RequestBody OpenAiChatRequest request
+            @Valid @RequestBody ChatRequest request
     ) {
         String content = openAiProvider.sendMessage(request.message().trim());
 
@@ -48,7 +48,7 @@ public class ChatController {
 
     @PostMapping("/anthropic")
     public AiResponse sendToAnthropic(
-            @Valid @RequestBody AnthropicChatRequest request
+            @Valid @RequestBody ChatRequest request
     ) {
         String content = anthropicProvider.sendMessage(request.message().trim());
 
@@ -60,7 +60,7 @@ public class ChatController {
 
     @PostMapping("/gemini")
     public AiResponse sendToGemini(
-            @Valid @RequestBody GeminiChatRequest request
+            @Valid @RequestBody ChatRequest request
     ) {
         String content = geminiProvider.sendMessage(request.message().trim());
 

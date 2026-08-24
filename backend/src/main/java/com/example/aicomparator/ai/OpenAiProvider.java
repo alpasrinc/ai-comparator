@@ -1,7 +1,7 @@
 package com.example.aicomparator.ai;
 
 import java.util.stream.Collectors;
-
+import com.example.aicomparator.entity.AiProviderType;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -11,7 +11,7 @@ import com.openai.models.responses.Response;
 import com.openai.models.responses.ResponseCreateParams;
 
 @Service
-public class OpenAiProvider {
+public class OpenAiProvider implements AiProvider {
 
     private final OpenAIClient client;
     private final String model;
@@ -20,6 +20,12 @@ public class OpenAiProvider {
         this.client = OpenAIOkHttpClient.fromEnv();
         this.model = model;
     }
+
+    @Override
+public AiProviderType getProviderType() {
+    return AiProviderType.OPENAI;
+}
+    @Override
 
     public String sendMessage(String message) {
         ResponseCreateParams params = ResponseCreateParams.builder()
