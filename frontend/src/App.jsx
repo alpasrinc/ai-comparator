@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
+import ChatInput from './components/ChatInput'
 import './App.css'
 
 function App() {
-  const [status, setStatus] = useState('Kontrol ediliyor...')
-  const [error, setError] = useState('')
+  const [backendStatus, setBackendStatus] = useState('Kontrol ediliyor...')
+  const [backendError, setBackendError] = useState('')
+  const [submittedMessage, setSubmittedMessage] = useState('')
 
   useEffect(() => {
     fetch('http://localhost:8080/api/health')
@@ -15,28 +17,55 @@ function App() {
         return response.json()
       })
       .then((data) => {
-        setStatus(data.status)
+        setBackendStatus(data.status)
       })
       .catch((requestError) => {
-        setError(requestError.message)
-        setStatus('Bağlantı kurulamadı')
+        setBackendError(requestError.message)
+        setBackendStatus('Bağlantı kurulamadı')
       })
   }, [])
 
+  function handleSend(message) {
+    setSubmittedMessage(message)
+  }
+
   return (
-    <main>
-      <h1>AI Comparator</h1>
-      <p>React → Spring Boot bağlantı testi</p>
-
-      <section>
-        <strong>Backend durumu:</strong> {status}
-
-        {error && (
-          <p>
-            Hata: {error}
+    <main className="app">
+      <header className="app__header">
+        <div>
+          <p className="app__eyebrow">AI COMPARATOR</p>
+          <h1>Yapay zekâ cevaplarını karşılaştırın</h1>
+          <p className="app__description">
+            Tek mesaj yazın, farklı yapay zekâların cevaplarını aynı ekranda
+            inceleyin.
           </p>
+        </div>
+
+        <div
+          className={`backend-status ${
+            backendError ? 'backend-status--error' : ''
+          }`}
+        >
+          <span className="backend-status__indicator" />
+          Backend: {backendStatus}
+        </div>
+      </header>
+
+      <section className="workspace">
+        {submittedMessage ? (
+          <div className="submitted-message">
+            <span>Son gönderilen mesaj</span>
+            <p>{submittedMessage}</p>
+          </div>
+        ) : (
+          <div className="empty-state">
+            <h2>Karşılaştırmaya hazır</h2>
+            <p>İlk mesajınızı aşağıdaki alana yazın.</p>
+          </div>
         )}
       </section>
+
+      <ChatInput onSend={handleSend} />
     </main>
   )
 }
