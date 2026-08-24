@@ -1,15 +1,16 @@
 import { useState } from 'react'
 
-function ChatInput({ onSend }) {
+function ChatInput({ onSend, disabled = false }) {
   const [message, setMessage] = useState('')
 
   const trimmedMessage = message.trim()
   const isEmpty = trimmedMessage.length === 0
+  const cannotSend = isEmpty || disabled
 
   function handleSubmit(event) {
     event.preventDefault()
 
-    if (isEmpty) {
+    if (cannotSend) {
       return
     }
 
@@ -37,13 +38,14 @@ function ChatInput({ onSend }) {
         placeholder="Bir şey sorun..."
         rows="4"
         maxLength="4000"
+        disabled={disabled}
       />
 
       <div className="chat-input__footer">
         <small>Enter: gönder · Shift + Enter: yeni satır</small>
 
-        <button type="submit" disabled={isEmpty}>
-          Gönder
+        <button type="submit" disabled={cannotSend}>
+          {disabled ? 'Cevaplar bekleniyor...' : 'Gönder'}
         </button>
       </div>
     </form>

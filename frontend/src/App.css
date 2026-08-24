@@ -239,3 +239,133 @@
     width: 100%;
   }
 }
+
+.ai-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.ai-panel {
+  --provider-color: #60a5fa;
+
+  min-width: 0;
+  min-height: 360px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: rgba(15, 23, 42, 0.82);
+  border: 1px solid #26344d;
+  border-top: 3px solid var(--provider-color);
+  border-radius: 18px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+}
+
+.ai-panel--openai {
+  --provider-color: #10b981;
+}
+
+.ai-panel--anthropic {
+  --provider-color: #f59e0b;
+}
+
+.ai-panel--gemini {
+  --provider-color: #60a5fa;
+}
+
+.ai-panel__header {
+  padding: 18px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid #26344d;
+}
+
+.ai-panel__header h2 {
+  margin: 4px 0 0;
+  color: #f8fafc;
+  font-size: 1.15rem;
+}
+
+.ai-panel__provider-code {
+  color: var(--provider-color);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.ai-panel__status {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  color: #94a3b8;
+  background: #111827;
+  border: 1px solid #26344d;
+  border-radius: 999px;
+  font-size: 0.7rem;
+}
+
+.ai-panel__content {
+  flex: 1;
+  padding: 18px;
+}
+
+.ai-panel__response,
+.ai-panel__placeholder,
+.ai-panel__error {
+  margin: 0;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ai-panel__response {
+  color: #dbeafe;
+}
+
+.ai-panel__placeholder {
+  color: #64748b;
+}
+
+.ai-panel__error {
+  color: #fca5a5;
+}
+
+.chat-input textarea:disabled {
+  color: #94a3b8;
+  background: #111827;
+  cursor: wait;
+}
+
+.chat-input button {
+  min-width: 190px;
+}
+
+@media (max-width: 980px) {
+  .ai-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-panel {
+    min-height: 260px;
+  }
+}
+
+@media (max-width: 720px) {
+  .ai-grid {
+    gap: 14px;
+  }
+
+  .ai-panel {
+    min-height: 220px;
+  }
+
+  .ai-panel__header,
+  .ai-panel__content {
+    padding: 15px;
+  }
+
+  .chat-input button {
+    min-width: 0;
+  }
+}

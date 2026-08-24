@@ -1,21 +1,21 @@
 import { useEffect, useState } from 'react'
+import AiPanel from './components/AiPanel'
 import ChatInput from './components/ChatInput'
+import { compareMessage, getHealth } from './services/api'
 import './App.css'
+
+const PROVIDERS = ['OPENAI', 'ANTHROPIC', 'GEMINI']
 
 function App() {
   const [backendStatus, setBackendStatus] = useState('Kontrol ediliyor...')
   const [backendError, setBackendError] = useState('')
   const [submittedMessage, setSubmittedMessage] = useState('')
+  const [responses, setResponses] = useState([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [comparisonError, setComparisonError] = useState('')
 
   useEffect(() => {
-    fetch('http://localhost:8080/api/health')
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`)
-        }
-
-        return response.json()
-      })
+    getHealth()
       .then((data) => {
         setBackendStatus(data.status)
       })
@@ -25,8 +25,20 @@ function App() {
       })
   }, [])
 
-  function handleSend(message) {
+  async function handleSend(message) {
     setSubmittedMessage(message)
+    setResponses([])
+    setComparisonError('')
+    setIsLoading(true)
+
+    try {
+      const data = await compareMessage(message)
+      setResponses(data.responses)
+    } catch (requestError) {
+      setComparisonError(requestError.message)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -51,21 +63,32 @@ function App() {
         </div>
       </header>
 
-      <section className="workspace">
-        {submittedMessage ? (
-          <div className="submitted-message">
-            <span>Son gönderilen mesaj</span>
-            <p>{submittedMessage}</p>
-          </div>
-        ) : (
-          <div className="empty-state">
-            <h2>Karşılaştırmaya hazır</h2>
-            <p>İlk mesajınızı aşağıdaki alana yazın.</p>
-          </div>
-        )}
+      {submittedMessage && (
+        <div className="submitted-message">
+          <span>Gönderilen mesaj</span>
+          <p>{submittedMessage}</p>
+        </div>
+      )}
+
+      <section className="ai-grid" aria-label="Yapay zekâ cevapları">
+        {PROVIDERS.map((provider) => {
+          const providerResponse = responses.find(
+            (response) => response.provider === provider,
+          )
+
+          return (
+            <AiPanel
+              key={provider}
+              provider={provider}
+              response={providerResponse?.content ?? ''}
+              isLoading={isLoading}
+              error={comparisonError}
+            />
+          )
+        })}
       </section>
 
-      <ChatInput onSend={handleSend} />
+      <ChatInput onSend={handleSend} disabled={isLoading} />
     </main>
   )
 }
