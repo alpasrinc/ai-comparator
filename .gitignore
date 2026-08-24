@@ -1,0 +1,9 @@
+# Local IDE settings
+.vscode/
+.idea/
+*.iml
+
+# Local environment files and secrets
+.env
+.env.*
+!.env.example
