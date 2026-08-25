@@ -10,42 +10,52 @@ function TreeNode({ node, activePath, onPreview }) {
   const isAssistant = message.role === 'ASSISTANT'
 
   return (
-    <li className="branch-tree__node">
-      {isAssistant ? (
-        <button
-          type="button"
-          className={`branch-tree__badge branch-tree__badge--${message.provider.toLowerCase()} ${
-            isActive
-              ? 'branch-tree__badge--active'
-              : 'branch-tree__badge--dim'
-          }`}
-          onClick={() => onPreview(message)}
-        >
-          {PROVIDER_LABELS[message.provider] ?? message.provider}
-        </button>
-      ) : (
-        <span
-          className={`branch-tree__question ${
-            isActive ? 'branch-tree__question--active' : ''
-          }`}
-        >
-          {message.content}
-        </span>
-      )}
+    <div className="branch-tree__node">
+      <div className="branch-tree__self">
+        {isAssistant ? (
+          <button
+            type="button"
+            className={`branch-tree__badge branch-tree__badge--${message.provider.toLowerCase()} ${
+              isActive
+                ? 'branch-tree__badge--active'
+                : 'branch-tree__badge--dim'
+            }`}
+            onClick={() => onPreview(message)}
+          >
+            {PROVIDER_LABELS[message.provider] ?? message.provider}
+          </button>
+        ) : (
+          <span
+            className={`branch-tree__question ${
+              isActive ? 'branch-tree__question--active' : ''
+            }`}
+          >
+            {message.content}
+          </span>
+        )}
+      </div>
 
       {children.length > 0 && (
-        <ul className="branch-tree__children">
+        <div className="branch-tree__row">
           {children.map((child) => (
-            <TreeNode
+            <div
               key={child.message.id}
-              node={child}
-              activePath={activePath}
-              onPreview={onPreview}
-            />
+              className={`branch-tree__branch ${
+                activePath.has(child.message.id)
+                  ? 'branch-tree__branch--connected'
+                  : ''
+              }`}
+            >
+              <TreeNode
+                node={child}
+                activePath={activePath}
+                onPreview={onPreview}
+              />
+            </div>
           ))}
-        </ul>
+        </div>
       )}
-    </li>
+    </div>
   )
 }
 
@@ -55,9 +65,9 @@ function BranchTree({ root, activePath, onPreview }) {
   }
 
   return (
-    <ul className="branch-tree">
+    <div className="branch-tree">
       <TreeNode node={root} activePath={activePath} onPreview={onPreview} />
-    </ul>
+    </div>
   )
 }
 

@@ -1048,6 +1048,12 @@
 }
 
 .branch-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.branch-panel__section {
   border: 1px solid rgba(148, 163, 184, 0.16);
   border-radius: 14px;
   background: rgba(15, 23, 42, 0.4);
@@ -1073,7 +1079,7 @@
   color: #f8fafc;
 }
 
-.branch-panel__body {
+.branch-panel__section-body {
   padding: 4px 16px 18px;
   display: flex;
   flex-direction: column;
@@ -1082,14 +1088,23 @@
 }
 
 .branch-panel__tree {
-  max-height: 220px;
-  overflow-y: auto;
+  overflow-x: auto;
   padding-top: 12px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.branch-panel__tree::-webkit-scrollbar {
+  display: none;
 }
 
 .branch-panel__history {
-  max-height: 320px;
-  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.branch-panel__history::-webkit-scrollbar {
+  display: none;
 }
 
 .branch-panel__preview {
@@ -1126,28 +1141,61 @@
   white-space: pre-wrap;
 }
 
-.branch-tree,
-.branch-tree__children {
-  list-style: none;
-  margin: 0;
-  padding-left: 0;
-}
-
-.branch-tree__children {
-  padding-left: 20px;
-  margin-top: 6px;
-  border-left: 1px dashed rgba(148, 163, 184, 0.25);
+.branch-tree {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0 8px;
 }
 
 .branch-tree__node {
-  margin-bottom: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.branch-tree__self {
+  display: flex;
+  justify-content: center;
+}
+
+.branch-tree__row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 10px;
+}
+
+.branch-tree__branch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 10px;
+}
+
+.branch-tree__branch--connected {
+  position: relative;
+}
+
+.branch-tree__branch--connected::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 1px;
+  height: 10px;
+  background: rgba(148, 163, 184, 0.4);
 }
 
 .branch-tree__question {
   display: block;
   padding: 4px 0;
+  max-width: 220px;
   color: #64748b;
   font-size: 0.85rem;
+  text-align: center;
+  overflow-wrap: anywhere;
 }
 
 .branch-tree__question--active {
