@@ -42,7 +42,10 @@ public class ChatController {
 public CompareResponse compare(
         @Valid @RequestBody ChatRequest request
 ) {
-    return aiComparisonService.compare(request.message().trim());
+    return aiComparisonService.compare(
+            request.conversationId(),
+            request.message().trim()
+    );
 }
 
     @PostMapping("/openai")

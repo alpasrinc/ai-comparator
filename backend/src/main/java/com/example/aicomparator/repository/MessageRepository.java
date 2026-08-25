@@ -1,6 +1,7 @@
 package com.example.aicomparator.repository;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -16,4 +17,9 @@ public interface MessageRepository
     List<Message> findByParentMessage_IdOrderByCreatedAtAsc(
         Long parentMessageId
     );
+
+    Optional<Message> findByIdAndConversation_Id(
+        Long messageId,
+        Long conversationId
+);
 }

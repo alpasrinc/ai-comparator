@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-function ChatInput({ onSend, disabled = false }) {
+function ChatInput({ onSend, disabled = false, isLoading = false })  {
   const [message, setMessage] = useState('')
 
   const trimmedMessage = message.trim()
@@ -45,7 +45,7 @@ function ChatInput({ onSend, disabled = false }) {
         <small>Enter: gönder · Shift + Enter: yeni satır</small>
 
         <button type="submit" disabled={cannotSend}>
-          {disabled ? 'Cevaplar bekleniyor...' : 'Gönder'}
+          {isLoading ? 'Cevaplar bekleniyor...' : 'Gönder'}
         </button>
       </div>
     </form>

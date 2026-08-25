@@ -15,12 +15,28 @@ export function getHealth() {
   return request('/api/health')
 }
 
-export function compareMessage(message) {
+export function compareMessage(message, conversationId = null) {
   return request('/api/chat/compare', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({
+      conversationId,
+      message,
+    }),
   })
+}
+
+export function selectActiveMessage(conversationId, messageId) {
+  return request(
+    `/api/conversations/${conversationId}/active-message`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ messageId }),
+    },
+  )
 }

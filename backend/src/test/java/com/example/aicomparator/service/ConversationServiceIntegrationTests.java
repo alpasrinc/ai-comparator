@@ -95,4 +95,91 @@ class ConversationServiceIntegrationTests {
                         AiProviderType.GEMINI
                 );
     }
+    @Test
+void shouldContinueFromSelectedAssistantMessage() {
+    CompareResponse firstComparison = conversationService.saveComparison(
+            "Java nedir?",
+            List.of(
+                    new AiResponse(null, "OPENAI", "OpenAI alternatif cevabı"),
+                    new AiResponse(null, "ANTHROPIC", "Seçilen Claude cevabı"),
+                    new AiResponse(null, "GEMINI", "Gemini alternatif cevabı")
+            )
+    );
+
+    AiResponse selectedResponse = firstComparison.responses().stream()
+            .filter(response ->
+                    response.provider().equals("ANTHROPIC")
+            )
+            .findFirst()
+            .orElseThrow();
+
+    var selection = conversationService.selectActiveMessage(
+            firstComparison.conversationId(),
+            selectedResponse.messageId()
+    );
+
+    assertThat(selection.activeMessageId())
+            .isEqualTo(selectedResponse.messageId());
+    assertThat(selection.provider())
+            .isEqualTo("ANTHROPIC");
+
+    String contextPrompt =
+            conversationService.buildActiveContextPrompt(
+                    firstComparison.conversationId(),
+                    "Bir örnek verir misin?"
+            );
+
+    assertThat(contextPrompt)
+            .contains(
+                    "USER: Java nedir?",
+                    "ASSISTANT: Seçilen Claude cevabı",
+                    "USER: Bir örnek verir misin?"
+            )
+            .doesNotContain(
+                    "OpenAI alternatif cevabı",
+                    "Gemini alternatif cevabı"
+            );
+
+    CompareResponse continuation =
+            conversationService.saveContinuation(
+                    firstComparison.conversationId(),
+                    "Bir örnek verir misin?",
+                    List.of(
+                            new AiResponse(null, "OPENAI", "Yeni OpenAI cevabı"),
+                            new AiResponse(null, "ANTHROPIC", "Yeni Claude cevabı"),
+                            new AiResponse(null, "GEMINI", "Yeni Gemini cevabı")
+                    )
+            );
+
+    assertThat(continuation.conversationId())
+            .isEqualTo(firstComparison.conversationId());
+
+    Message continuedUserMessage = messageRepository
+            .findById(continuation.userMessageId())
+            .orElseThrow();
+
+    assertThat(continuedUserMessage.getParentMessage().getId())
+            .isEqualTo(selectedResponse.messageId());
+
+    assertThat(
+            messageRepository.findByParentMessage_IdOrderByCreatedAtAsc(
+                    continuation.userMessageId()
+            )
+    )
+            .hasSize(3)
+            .extracting(Message::getProvider)
+            .containsExactlyInAnyOrder(
+                    AiProviderType.OPENAI,
+                    AiProviderType.ANTHROPIC,
+                    AiProviderType.GEMINI
+            );
+
+    assertThat(
+            conversationRepository
+                    .findById(firstComparison.conversationId())
+                    .orElseThrow()
+                    .getActiveMessage()
+                    .getId()
+    ).isEqualTo(selectedResponse.messageId());
+}
 }

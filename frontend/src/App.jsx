@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react'
 import AiPanel from './components/AiPanel'
 import ChatInput from './components/ChatInput'
-import { compareMessage, getHealth } from './services/api'
+import {
+  compareMessage,
+  getHealth,
+  selectActiveMessage,
+} from './services/api'
 import './App.css'
 
 const PROVIDERS = ['OPENAI', 'ANTHROPIC', 'GEMINI']
@@ -9,10 +13,15 @@ const PROVIDERS = ['OPENAI', 'ANTHROPIC', 'GEMINI']
 function App() {
   const [backendStatus, setBackendStatus] = useState('Kontrol ediliyor...')
   const [backendError, setBackendError] = useState('')
+  const [conversationId, setConversationId] = useState(null)
   const [submittedMessage, setSubmittedMessage] = useState('')
   const [responses, setResponses] = useState([])
+  const [selectedMessageId, setSelectedMessageId] = useState(null)
+  const [selectedProvider, setSelectedProvider] = useState('')
+  const [selectingMessageId, setSelectingMessageId] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
   const [comparisonError, setComparisonError] = useState('')
+  const [selectionError, setSelectionError] = useState('')
 
   useEffect(() => {
     getHealth()
@@ -28,11 +37,16 @@ function App() {
   async function handleSend(message) {
     setSubmittedMessage(message)
     setResponses([])
+    setSelectedMessageId(null)
+    setSelectedProvider('')
     setComparisonError('')
+    setSelectionError('')
     setIsLoading(true)
 
     try {
-      const data = await compareMessage(message)
+      const data = await compareMessage(message, conversationId)
+
+      setConversationId(data.conversationId)
       setResponses(data.responses)
     } catch (requestError) {
       setComparisonError(requestError.message)
@@ -40,6 +54,35 @@ function App() {
       setIsLoading(false)
     }
   }
+
+  async function handleSelect(response) {
+    if (!conversationId || !response.messageId) {
+      return
+    }
+
+    setSelectingMessageId(response.messageId)
+    setSelectionError('')
+
+    try {
+      const result = await selectActiveMessage(
+        conversationId,
+        response.messageId,
+      )
+
+      setSelectedMessageId(result.activeMessageId)
+      setSelectedProvider(result.provider)
+    } catch (requestError) {
+      setSelectionError(requestError.message)
+    } finally {
+      setSelectingMessageId(null)
+    }
+  }
+
+  const mustSelectResponse =
+    responses.length > 0 && selectedMessageId === null
+
+  const inputDisabled =
+    isLoading || selectingMessageId !== null || mustSelectResponse
 
   return (
     <main className="app">
@@ -70,6 +113,25 @@ function App() {
         </div>
       )}
 
+      {mustSelectResponse && !isLoading && (
+        <div className="selection-notice">
+          Devam etmek için aşağıdaki AI cevaplarından birini seçin.
+        </div>
+      )}
+
+      {selectedMessageId && (
+        <div className="selection-notice selection-notice--success">
+          {selectedProvider} cevabı seçildi. Yeni mesajınız bu dal üzerinden
+          devam edecek.
+        </div>
+      )}
+
+      {selectionError && (
+        <div className="selection-notice selection-notice--error">
+          {selectionError}
+        </div>
+      )}
+
       <section className="ai-grid" aria-label="Yapay zekâ cevapları">
         {PROVIDERS.map((provider) => {
           const providerResponse = responses.find(
@@ -80,15 +142,26 @@ function App() {
             <AiPanel
               key={provider}
               provider={provider}
-              response={providerResponse?.content ?? ''}
+              response={providerResponse}
               isLoading={isLoading}
               error={comparisonError}
+              isSelected={
+                selectedMessageId === providerResponse?.messageId
+              }
+              isSelecting={
+                selectingMessageId === providerResponse?.messageId
+              }
+              onSelect={handleSelect}
             />
           )
         })}
       </section>
 
-      <ChatInput onSend={handleSend} disabled={isLoading} />
+      <ChatInput
+  onSend={handleSend}
+  disabled={inputDisabled}
+  isLoading={isLoading}
+ />
     </main>
   )
 }

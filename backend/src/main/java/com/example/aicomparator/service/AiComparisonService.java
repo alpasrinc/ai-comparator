@@ -31,14 +31,24 @@ public class AiComparisonService {
         this.conversationService = conversationService;
     }
 
-    public CompareResponse compare(String userMessage) {
+    public CompareResponse compare(
+            Long conversationId,
+            String userMessage
+    ) {
+        String providerPrompt = conversationId == null
+                ? userMessage
+                : conversationService.buildActiveContextPrompt(
+                        conversationId,
+                        userMessage
+                );
+
         List<CompletableFuture<AiResponse>> responseFutures =
                 providers.stream()
                         .map(provider -> CompletableFuture.supplyAsync(
                                 () -> new AiResponse(
                                         null,
                                         provider.getProviderType().name(),
-                                        provider.sendMessage(userMessage)
+                                        provider.sendMessage(providerPrompt)
                                 ),
                                 aiExecutor
                         ))
@@ -48,7 +58,15 @@ public class AiComparisonService {
                 .map(CompletableFuture::join)
                 .toList();
 
-        return conversationService.saveComparison(
+        if (conversationId == null) {
+            return conversationService.saveComparison(
+                    userMessage,
+                    responses
+            );
+        }
+
+        return conversationService.saveContinuation(
+                conversationId,
                 userMessage,
                 responses
         );
