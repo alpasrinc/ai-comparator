@@ -76,8 +76,9 @@ function App() {
     try {
       const conversation = await getConversation(id)
       setConversationMessages(conversation.messages)
-    } catch {
+    } catch (requestError) {
       // Dallanma şeridi güncel veriyi gösteremeyebilir; ana akışı etkilemez.
+      console.error('Konuşma detayı tazelenemedi:', requestError)
     }
   }
 
@@ -235,6 +236,7 @@ function App() {
 
       if (!retriedResponse.error) {
         await refreshConversations()
+        await refreshConversationDetail(conversationId)
       }
     } catch (requestError) {
       setResponses((currentResponses) =>
