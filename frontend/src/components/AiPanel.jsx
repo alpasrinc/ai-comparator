@@ -4,6 +4,12 @@ const PROVIDER_LABELS = {
   GEMINI: 'Gemini',
 }
 
+const PROVIDER_MARKS = {
+  OPENAI: 'G',
+  ANTHROPIC: 'C',
+  GEMINI: '◆',
+}
+
 function AiPanel({
   provider,
   response,
@@ -16,8 +22,27 @@ function AiPanel({
   onRetry,
 }) {
   const providerLabel = PROVIDER_LABELS[provider] ?? provider
+  const providerMark = PROVIDER_MARKS[provider] ?? 'AI'
   const content = response?.content ?? ''
   const panelError = response?.error ?? error
+  const waiting = isLoading || isRetrying
+
+  let statusLabel = 'Hazır'
+  let statusState = 'ready'
+
+  if (waiting) {
+    statusLabel = 'Düşünüyor'
+    statusState = 'loading'
+  } else if (isSelected) {
+    statusLabel = 'Seçildi'
+    statusState = 'selected'
+  } else if (panelError) {
+    statusLabel = 'Hata'
+    statusState = 'error'
+  } else if (content) {
+    statusLabel = 'Tamamlandı'
+    statusState = 'success'
+  }
 
   return (
     <article
@@ -26,33 +51,40 @@ function AiPanel({
       }`}
     >
       <header className="ai-panel__header">
-        <div>
-          <span className="ai-panel__provider-code">{provider}</span>
-          <h2>{providerLabel}</h2>
+        <div className="ai-panel__identity">
+          <span className="ai-panel__avatar" aria-hidden="true">
+            {providerMark}
+          </span>
+
+          <div>
+            <span className="ai-panel__provider-code">{provider}</span>
+            <h2>{providerLabel}</h2>
+          </div>
         </div>
 
-        <span className="ai-panel__status">
-          {isLoading || isRetrying
-            ? 'Düşünüyor...'
-            : isSelected
-              ? 'Seçildi'
-              : panelError
-                ? 'Hata'
-              : content
-                ? 'Tamamlandı'
-                : 'Hazır'}
+        <span
+          className={`ai-panel__status ai-panel__status--${statusState}`}
+        >
+          <span className="ai-panel__status-dot" aria-hidden="true" />
+          {statusLabel}
         </span>
       </header>
 
       <div className="ai-panel__content">
-        {(isLoading || isRetrying) && (
-          <p className="ai-panel__placeholder">
-            Yapay zekâ yanıtı bekleniyor...
-          </p>
+        {waiting && (
+          <div className="ai-panel__skeleton" aria-label="Yanıt bekleniyor">
+            <span />
+            <span />
+            <span />
+            <span />
+          </div>
         )}
 
-        {!isLoading && !isRetrying && panelError && (
+        {!waiting && panelError && (
           <div className="ai-panel__error-block" role="alert">
+            <span className="ai-panel__error-icon" aria-hidden="true">
+              !
+            </span>
             <p className="ai-panel__error">{panelError}</p>
             <button
               type="button"
@@ -64,18 +96,19 @@ function AiPanel({
           </div>
         )}
 
-        {!isLoading && !isRetrying && !panelError && content && (
+        {!waiting && !panelError && content && (
           <p className="ai-panel__response">{content}</p>
         )}
 
-        {!isLoading && !isRetrying && !panelError && !content && (
-          <p className="ai-panel__placeholder">
-            Bir mesaj gönderdiğinizde cevap burada gösterilecek.
-          </p>
+        {!waiting && !panelError && !content && (
+          <div className="ai-panel__empty">
+            <span aria-hidden="true">✦</span>
+            <p>Bir mesaj gönderdiğinizde cevap burada gösterilecek.</p>
+          </div>
         )}
       </div>
 
-      {!isLoading && !isRetrying && !panelError && response && (
+      {!waiting && !panelError && response && (
         <footer className="ai-panel__footer">
           <button
             type="button"
@@ -87,7 +120,7 @@ function AiPanel({
               ? 'Seçiliyor...'
               : isSelected
                 ? 'Bu cevap seçildi'
-                : 'Bu cevapla devam et'}
+                : 'Bu cevapla devam et →'}
           </button>
         </footer>
       )}

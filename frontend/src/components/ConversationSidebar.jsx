@@ -15,9 +15,14 @@ function ConversationSidebar({
   return (
     <aside className="conversation-sidebar">
       <div className="conversation-sidebar__header">
-        <div>
-          <span>AI COMPARATOR</span>
-          <h2>Konuşmalar</h2>
+        <div className="conversation-sidebar__brand">
+          <span className="conversation-sidebar__logo" aria-hidden="true">
+            AI
+          </span>
+          <div>
+            <span>AI COMPARATOR</span>
+            <h2>Konuşmalar</h2>
+          </div>
         </div>
 
         <button

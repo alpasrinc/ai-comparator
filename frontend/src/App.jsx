@@ -244,6 +244,12 @@ function App() {
               Tek mesaj yazın, farklı yapay zekâların cevaplarını aynı ekranda
               inceleyin.
             </p>
+
+            <div className="app__features" aria-label="Uygulama özellikleri">
+              <span>3 yapay zekâ</span>
+              <span>Ortak bağlam</span>
+              <span>Güvenli API</span>
+            </div>
           </div>
 
           <div
