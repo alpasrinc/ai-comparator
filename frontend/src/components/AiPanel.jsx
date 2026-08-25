@@ -9,12 +9,15 @@ function AiPanel({
   response,
   isLoading,
   error,
+  isRetrying,
   isSelected,
   isSelecting,
   onSelect,
+  onRetry,
 }) {
   const providerLabel = PROVIDER_LABELS[provider] ?? provider
   const content = response?.content ?? ''
+  const panelError = response?.error ?? error
 
   return (
     <article
@@ -29,10 +32,12 @@ function AiPanel({
         </div>
 
         <span className="ai-panel__status">
-          {isLoading
+          {isLoading || isRetrying
             ? 'Düşünüyor...'
             : isSelected
               ? 'Seçildi'
+              : panelError
+                ? 'Hata'
               : content
                 ? 'Tamamlandı'
                 : 'Hazır'}
@@ -40,28 +45,37 @@ function AiPanel({
       </header>
 
       <div className="ai-panel__content">
-        {isLoading && (
+        {(isLoading || isRetrying) && (
           <p className="ai-panel__placeholder">
             Yapay zekâ yanıtı bekleniyor...
           </p>
         )}
 
-        {!isLoading && error && (
-          <p className="ai-panel__error">{error}</p>
+        {!isLoading && !isRetrying && panelError && (
+          <div className="ai-panel__error-block" role="alert">
+            <p className="ai-panel__error">{panelError}</p>
+            <button
+              type="button"
+              className="ai-panel__retry-button"
+              onClick={onRetry}
+            >
+              Tekrar dene
+            </button>
+          </div>
         )}
 
-        {!isLoading && !error && content && (
+        {!isLoading && !isRetrying && !panelError && content && (
           <p className="ai-panel__response">{content}</p>
         )}
 
-        {!isLoading && !error && !content && (
+        {!isLoading && !isRetrying && !panelError && !content && (
           <p className="ai-panel__placeholder">
             Bir mesaj gönderdiğinizde cevap burada gösterilecek.
           </p>
         )}
       </div>
 
-      {!isLoading && !error && response && (
+      {!isLoading && !isRetrying && !panelError && response && (
         <footer className="ai-panel__footer">
           <button
             type="button"

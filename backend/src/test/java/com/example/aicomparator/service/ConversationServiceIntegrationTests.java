@@ -251,4 +251,56 @@ void shouldListAndLoadConversationHistory() {
                     "GEMINI"
             );
 }
+
+@Test
+void shouldSaveOnlySuccessfulResponsesAndAttachRetriedResponse() {
+    CompareResponse comparison = conversationService.saveComparison(
+            "Hata yönetimi testi",
+            List.of(
+                    AiResponse.success(null, "OPENAI", "OpenAI cevabı"),
+                    AiResponse.failure(
+                            "ANTHROPIC",
+                            "Claude yanıtı alınamadı."
+                    ),
+                    AiResponse.success(null, "GEMINI", "Gemini cevabı")
+            )
+    );
+
+    assertThat(comparison.responses()).hasSize(3);
+    assertThat(comparison.responses())
+            .filteredOn(response -> response.error() != null)
+            .singleElement()
+            .satisfies(response -> {
+                assertThat(response.provider()).isEqualTo("ANTHROPIC");
+                assertThat(response.messageId()).isNull();
+            });
+
+    assertThat(
+            messageRepository.findByParentMessage_IdOrderByCreatedAtAsc(
+                    comparison.userMessageId()
+            )
+    ).hasSize(2);
+
+    AiResponse retriedResponse = conversationService.saveRetriedResponse(
+            comparison.conversationId(),
+            comparison.userMessageId(),
+            AiResponse.success(null, "ANTHROPIC", "Yeni Claude cevabı")
+    );
+
+    assertThat(retriedResponse.messageId()).isNotNull();
+    assertThat(retriedResponse.error()).isNull();
+
+    assertThat(
+            messageRepository.findByParentMessage_IdOrderByCreatedAtAsc(
+                    comparison.userMessageId()
+            )
+    )
+            .hasSize(3)
+            .extracting(Message::getProvider)
+            .containsExactlyInAnyOrder(
+                    AiProviderType.OPENAI,
+                    AiProviderType.ANTHROPIC,
+                    AiProviderType.GEMINI
+            );
+}
 }

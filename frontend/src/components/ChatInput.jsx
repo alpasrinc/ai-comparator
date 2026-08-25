@@ -26,7 +26,7 @@ function ChatInput({ onSend, disabled = false, isLoading = false })  {
   }
 
   return (
-    <form className="chat-input" onSubmit={handleSubmit}>
+    <form className="chat-input" onSubmit={handleSubmit} noValidate>
       <label htmlFor="message">Mesajınız</label>
 
       <textarea
@@ -39,10 +39,15 @@ function ChatInput({ onSend, disabled = false, isLoading = false })  {
         rows="4"
         maxLength="4000"
         disabled={disabled}
+        aria-describedby="message-help"
       />
 
       <div className="chat-input__footer">
-        <small>Enter: gönder · Shift + Enter: yeni satır</small>
+        <small id="message-help">
+          {isEmpty
+            ? 'Bir mesaj yazın · Enter: gönder'
+            : `${trimmedMessage.length}/4000 · Shift + Enter: yeni satır`}
+        </small>
 
         <button type="submit" disabled={cannotSend}>
           {isLoading ? 'Cevaplar bekleniyor...' : 'Gönder'}

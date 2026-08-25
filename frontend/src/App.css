@@ -331,6 +331,33 @@
   color: #fca5a5;
 }
 
+.ai-panel__error-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.ai-panel__retry-button {
+  padding: 9px 13px;
+  color: #fecaca;
+  background: rgba(153, 27, 27, 0.2);
+  border: 1px solid rgba(248, 113, 113, 0.45);
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ai-panel__retry-button:hover {
+  color: #ffffff;
+  background: rgba(185, 28, 28, 0.35);
+}
+
+.ai-panel__retry-button:focus-visible {
+  outline: 3px solid rgba(248, 113, 113, 0.45);
+  outline-offset: 3px;
+}
+
 .chat-input textarea:disabled {
   color: #94a3b8;
   background: #111827;

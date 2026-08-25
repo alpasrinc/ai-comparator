@@ -7,6 +7,7 @@ import {
   getConversation,
   getConversations,
   getHealth,
+  retryProvider,
   selectActiveMessage,
 } from './services/api'
 import './App.css'
@@ -21,6 +22,7 @@ function App() {
   const [isOpeningConversation, setIsOpeningConversation] = useState(false)
   const [historyError, setHistoryError] = useState('')
   const [conversationId, setConversationId] = useState(null)
+  const [userMessageId, setUserMessageId] = useState(null)
   const [submittedMessage, setSubmittedMessage] = useState('')
   const [responses, setResponses] = useState([])
   const [selectedMessageId, setSelectedMessageId] = useState(null)
@@ -29,6 +31,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(false)
   const [comparisonError, setComparisonError] = useState('')
   const [selectionError, setSelectionError] = useState('')
+  const [retryingProvider, setRetryingProvider] = useState('')
 
   useEffect(() => {
     getHealth()
@@ -94,6 +97,7 @@ function App() {
       )
 
       setConversationId(conversation.id)
+      setUserMessageId(latestUserMessage?.id ?? null)
       setSubmittedMessage(latestUserMessage?.content ?? '')
       setResponses(latestResponses)
       setSelectedMessageId(conversation.activeMessageId)
@@ -107,6 +111,7 @@ function App() {
 
   function handleNewConversation() {
     setConversationId(null)
+    setUserMessageId(null)
     setSubmittedMessage('')
     setResponses([])
     setSelectedMessageId(null)
@@ -121,6 +126,7 @@ function App() {
     setResponses([])
     setSelectedMessageId(null)
     setSelectedProvider('')
+    setUserMessageId(null)
     setComparisonError('')
     setSelectionError('')
     setIsLoading(true)
@@ -129,12 +135,55 @@ function App() {
       const data = await compareMessage(message, conversationId)
 
       setConversationId(data.conversationId)
+      setUserMessageId(data.userMessageId)
       setResponses(data.responses)
       await refreshConversations()
     } catch (requestError) {
       setComparisonError(requestError.message)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  async function handleRetry(provider) {
+    if (!submittedMessage) {
+      return
+    }
+
+    if (!conversationId || !userMessageId) {
+      await handleSend(submittedMessage)
+      return
+    }
+
+    setRetryingProvider(provider)
+    setComparisonError('')
+
+    try {
+      const retriedResponse = await retryProvider(
+        conversationId,
+        userMessageId,
+        provider,
+      )
+
+      setResponses((currentResponses) =>
+        currentResponses.map((response) =>
+          response.provider === provider ? retriedResponse : response,
+        ),
+      )
+
+      if (!retriedResponse.error) {
+        await refreshConversations()
+      }
+    } catch (requestError) {
+      setResponses((currentResponses) =>
+        currentResponses.map((response) =>
+          response.provider === provider
+            ? { ...response, error: requestError.message }
+            : response,
+        ),
+      )
+    } finally {
+      setRetryingProvider('')
     }
   }
 
@@ -173,6 +222,7 @@ function App() {
     isLoading ||
     isOpeningConversation ||
     selectingMessageId !== null ||
+    retryingProvider !== '' ||
     mustSelectResponse
 
   return (
@@ -257,6 +307,7 @@ function App() {
                 response={providerResponse}
                 isLoading={isLoading}
                 error={comparisonError}
+                isRetrying={retryingProvider === provider}
                 isSelected={
                   selectedMessageId === providerResponse?.messageId
                 }
@@ -264,6 +315,7 @@ function App() {
                   selectingMessageId === providerResponse?.messageId
                 }
                 onSelect={handleSelect}
+                onRetry={() => handleRetry(provider)}
               />
             )
           })}

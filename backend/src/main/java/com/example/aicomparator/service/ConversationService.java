@@ -171,6 +171,7 @@ public class ConversationService {
             List<AiResponse> aiResponses
     ) {
         List<Message> assistantMessages = aiResponses.stream()
+                .filter(response -> response.error() == null)
                 .map(response -> Message.createAssistantMessage(
                         conversation,
                         userMessage,
@@ -182,12 +183,24 @@ public class ConversationService {
         List<Message> savedAssistantMessages =
                 messageRepository.saveAll(assistantMessages);
 
-        List<AiResponse> savedResponses = savedAssistantMessages.stream()
-                .map(message -> new AiResponse(
-                        message.getId(),
-                        message.getProvider().name(),
-                        message.getContent()
-                ))
+        List<AiResponse> savedResponses = aiResponses.stream()
+                .map(response -> {
+                    if (response.error() != null) {
+                        return response;
+                    }
+
+                    Message savedMessage = savedAssistantMessages.stream()
+                            .filter(message -> message.getProvider().name()
+                                    .equals(response.provider()))
+                            .findFirst()
+                            .orElseThrow();
+
+                    return AiResponse.success(
+                            savedMessage.getId(),
+                            savedMessage.getProvider().name(),
+                            savedMessage.getContent()
+                    );
+                })
                 .toList();
 
         return new CompareResponse(
@@ -195,6 +208,91 @@ public class ConversationService {
                 userMessage.getId(),
                 savedResponses
         );
+    }
+
+    @Transactional(readOnly = true)
+    public String buildPromptForUserMessage(
+            Long conversationId,
+            Long userMessageId
+    ) {
+        Message userMessage = messageRepository
+                .findByIdAndConversation_Id(userMessageId, conversationId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Kullanıcı mesajı bulunamadı."
+                ));
+
+        if (userMessage.getRole() != MessageRole.USER) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Yalnızca kullanıcı mesajı yeniden denenebilir."
+            );
+        }
+
+        return buildBranchPrompt(userMessage);
+    }
+
+    @Transactional
+    public AiResponse saveRetriedResponse(
+            Long conversationId,
+            Long userMessageId,
+            AiResponse response
+    ) {
+        Message userMessage = messageRepository
+                .findByIdAndConversation_Id(userMessageId, conversationId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Kullanıcı mesajı bulunamadı."
+                ));
+
+        if (userMessage.getRole() != MessageRole.USER) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Yanıt yalnızca bir kullanıcı mesajına bağlanabilir."
+            );
+        }
+
+        Message savedMessage = messageRepository.save(
+                Message.createAssistantMessage(
+                        userMessage.getConversation(),
+                        userMessage,
+                        AiProviderType.valueOf(response.provider()),
+                        response.content()
+                )
+        );
+
+        return AiResponse.success(
+                savedMessage.getId(),
+                savedMessage.getProvider().name(),
+                savedMessage.getContent()
+        );
+    }
+
+    private String buildBranchPrompt(Message lastMessage) {
+        List<Message> activeBranch = new ArrayList<>();
+        Message currentMessage = lastMessage;
+
+        while (currentMessage != null) {
+            activeBranch.add(currentMessage);
+            currentMessage = currentMessage.getParentMessage();
+        }
+
+        Collections.reverse(activeBranch);
+
+        StringBuilder prompt = new StringBuilder(
+                "Aşağıdaki konuşmanın aktif dalını dikkate alarak "
+                        + "son kullanıcı mesajını yanıtla.\n\n"
+        );
+
+        for (Message message : activeBranch) {
+            prompt.append(message.getRole().name())
+                    .append(": ")
+                    .append(message.getContent())
+                    .append("\n\n");
+        }
+
+        prompt.append("ASSISTANT:");
+        return prompt.toString();
     }
 
     private Conversation findConversation(Long conversationId) {

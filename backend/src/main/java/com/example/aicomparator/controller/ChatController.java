@@ -14,6 +14,7 @@ import com.example.aicomparator.ai.OpenAiProvider;
 import com.example.aicomparator.dto.AiResponse;
 
 import com.example.aicomparator.dto.ChatRequest;
+import com.example.aicomparator.dto.RetryProviderRequest;
 
 import com.example.aicomparator.entity.AiProviderType;
 
@@ -48,17 +49,28 @@ public CompareResponse compare(
     );
 }
 
+    @PostMapping("/retry")
+    public AiResponse retryProvider(
+            @Valid @RequestBody RetryProviderRequest request
+    ) {
+        return aiComparisonService.retryProvider(
+                request.conversationId(),
+                request.userMessageId(),
+                request.provider()
+        );
+    }
+
     @PostMapping("/openai")
     public AiResponse sendToOpenAi(
             @Valid @RequestBody ChatRequest request
     ) {
         String content = openAiProvider.sendMessage(request.message().trim());
 
-        return new AiResponse(
-        null,
-        AiProviderType.OPENAI.name(),
-        content
-);
+        return AiResponse.success(
+                null,
+                AiProviderType.OPENAI.name(),
+                content
+        );
     }
 
     @PostMapping("/anthropic")
@@ -67,11 +79,11 @@ public CompareResponse compare(
     ) {
         String content = anthropicProvider.sendMessage(request.message().trim());
 
-        return new AiResponse(
-        null,
-        AiProviderType.ANTHROPIC.name(),
-        content
-);
+        return AiResponse.success(
+                null,
+                AiProviderType.ANTHROPIC.name(),
+                content
+        );
     }
 
     @PostMapping("/gemini")
@@ -80,10 +92,10 @@ public CompareResponse compare(
     ) {
         String content = geminiProvider.sendMessage(request.message().trim());
 
-        return new AiResponse(
-        null,
-        AiProviderType.GEMINI.name(),
-        content
-);
+        return AiResponse.success(
+                null,
+                AiProviderType.GEMINI.name(),
+                content
+        );
     }
 }
