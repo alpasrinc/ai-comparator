@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,6 +25,9 @@ import com.example.aicomparator.repository.MessageRepository;
 
 @Service
 public class ConversationService {
+
+    private static final Logger log =
+            LoggerFactory.getLogger(ConversationService.class);
 
     private static final int TITLE_MAX_LENGTH = 80;
 
@@ -46,6 +51,8 @@ public class ConversationService {
                 new Conversation(createTitle(userContent))
         );
 
+        log.info("Yeni konuşma oluşturuldu: id={}", conversation.getId());
+
         Message userMessage = messageRepository.save(
                 Message.createUserMessage(
                         conversation,
@@ -59,6 +66,54 @@ public class ConversationService {
                 userMessage,
                 aiResponses
         );
+    }
+
+    @Transactional
+    public UserTurnResult startComparison(String userContent) {
+        Conversation conversation = conversationRepository.save(
+                new Conversation(createTitle(userContent))
+        );
+
+        log.info("Yeni konuşma oluşturuldu: id={}", conversation.getId());
+
+        Message userMessage = messageRepository.save(
+                Message.createUserMessage(
+                        conversation,
+                        null,
+                        userContent
+                )
+        );
+
+        return new UserTurnResult(conversation.getId(), userMessage.getId());
+    }
+
+    @Transactional
+    public UserTurnResult startContinuation(
+            Long conversationId,
+            String userContent
+    ) {
+        Conversation conversation = findConversation(conversationId);
+        Message activeMessage = conversation.getActiveMessage();
+
+        if (activeMessage == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Devam etmeden önce bir AI cevabı seçilmelidir."
+            );
+        }
+
+        Message userMessage = messageRepository.save(
+                Message.createUserMessage(
+                        conversation,
+                        activeMessage,
+                        userContent
+                )
+        );
+
+        return new UserTurnResult(conversation.getId(), userMessage.getId());
+    }
+
+    public record UserTurnResult(Long conversationId, Long userMessageId) {
     }
 
     @Transactional
@@ -83,6 +138,13 @@ public class ConversationService {
         }
 
         conversation.selectActiveMessage(selectedMessage);
+
+        log.debug(
+                "Aktif mesaj değişti: conversationId={}, messageId={}, provider={}",
+                conversationId,
+                messageId,
+                selectedMessage.getProvider()
+        );
 
         return new ActiveMessageResponse(
                 conversation.getId(),

@@ -52,6 +52,16 @@
 		</dependency>
 
 		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-core</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-mysql</artifactId>
+		</dependency>
+
+		<dependency>
     <groupId>com.openai</groupId>
     <artifactId>openai-java</artifactId>
     <version>4.52.0</version>

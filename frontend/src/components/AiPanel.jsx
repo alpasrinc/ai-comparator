@@ -1,3 +1,7 @@
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import remarkBreaks from 'remark-breaks'
+
 const PROVIDER_LABELS = {
   OPENAI: 'ChatGPT',
   ANTHROPIC: 'Claude',
@@ -25,13 +29,17 @@ function AiPanel({
   const providerMark = PROVIDER_MARKS[provider] ?? 'AI'
   const content = response?.content ?? ''
   const panelError = response?.error ?? error
-  const waiting = isLoading || isRetrying
+  const isStreaming = Boolean(response?.streaming)
+  const waiting = (isLoading || isRetrying) && !content && !panelError
 
   let statusLabel = 'Hazır'
   let statusState = 'ready'
 
   if (waiting) {
     statusLabel = 'Düşünüyor'
+    statusState = 'loading'
+  } else if (isStreaming && !panelError) {
+    statusLabel = 'Yazıyor'
     statusState = 'loading'
   } else if (isSelected) {
     statusLabel = 'Seçildi'
@@ -97,7 +105,14 @@ function AiPanel({
         )}
 
         {!waiting && !panelError && content && (
-          <p className="ai-panel__response">{content}</p>
+          <div className="ai-panel__response">
+            <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+              {content}
+            </ReactMarkdown>
+            {isStreaming && (
+              <span className="ai-panel__cursor" aria-hidden="true" />
+            )}
+          </div>
         )}
 
         {!waiting && !panelError && !content && (
@@ -108,13 +123,13 @@ function AiPanel({
         )}
       </div>
 
-      {!waiting && !panelError && response && (
+      {!waiting && !panelError && !isStreaming && response && (
         <footer className="ai-panel__footer">
           <button
             type="button"
             className="ai-panel__select-button"
             onClick={() => onSelect(response)}
-            disabled={isSelecting || isSelected}
+            disabled={isSelecting || isSelected || !response.messageId}
           >
             {isSelecting
               ? 'Seçiliyor...'

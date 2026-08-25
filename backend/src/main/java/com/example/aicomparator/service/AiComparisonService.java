@@ -3,21 +3,35 @@ package com.example.aicomparator.service;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import com.example.aicomparator.ai.AiProvider;
 import com.example.aicomparator.dto.AiResponse;
 import com.example.aicomparator.dto.CompareResponse;
+import com.example.aicomparator.dto.StreamDoneEvent;
+import com.example.aicomparator.dto.StreamErrorEvent;
+import com.example.aicomparator.dto.StreamStartEvent;
+import com.example.aicomparator.dto.StreamTokenEvent;
 import com.example.aicomparator.entity.AiProviderType;
 
 @Service
 public class AiComparisonService {
+
+    private static final Logger log =
+            LoggerFactory.getLogger(AiComparisonService.class);
 
     private final List<AiProvider> providers;
     private final ExecutorService aiExecutor;
@@ -81,15 +95,7 @@ public class AiComparisonService {
             Long userMessageId,
             AiProviderType providerType
     ) {
-        AiProvider provider = providers.stream()
-                .filter(candidate ->
-                        candidate.getProviderType() == providerType
-                )
-                .findFirst()
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.BAD_REQUEST,
-                        "Desteklenmeyen AI sağlayıcısı."
-                ));
+        AiProvider provider = resolveProvider(providerType);
 
         String prompt = conversationService.buildPromptForUserMessage(
                 conversationId,
@@ -107,6 +113,182 @@ public class AiComparisonService {
                 userMessageId,
                 response
         );
+    }
+
+    public AiResponse sendSingle(
+            AiProviderType providerType,
+            String message
+    ) {
+        AiProvider provider = resolveProvider(providerType);
+
+        return requestProvider(provider, message).join();
+    }
+
+    public void streamCompare(
+            Long conversationId,
+            String userMessage,
+            SseEmitter emitter
+    ) {
+        String providerPrompt = conversationId == null
+                ? userMessage
+                : conversationService.buildActiveContextPrompt(
+                        conversationId,
+                        userMessage
+                );
+
+        ConversationService.UserTurnResult turn = conversationId == null
+                ? conversationService.startComparison(userMessage)
+                : conversationService.startContinuation(
+                        conversationId,
+                        userMessage
+                );
+
+        Object emitterLock = new Object();
+
+        emitter.onTimeout(emitter::complete);
+        emitter.onError(throwable -> { });
+
+        sendEvent(
+                emitter,
+                emitterLock,
+                "start",
+                new StreamStartEvent(turn.conversationId(), turn.userMessageId())
+        );
+
+        AtomicInteger remaining = new AtomicInteger(providers.size());
+
+        for (AiProvider provider : providers) {
+            streamProvider(provider, providerPrompt, turn, emitter, emitterLock, remaining);
+        }
+    }
+
+    private void streamProvider(
+            AiProvider provider,
+            String prompt,
+            ConversationService.UserTurnResult turn,
+            SseEmitter emitter,
+            Object emitterLock,
+            AtomicInteger remaining
+    ) {
+        String providerName = provider.getProviderType().name();
+        StringBuilder accumulated = new StringBuilder();
+
+        CompletableFuture
+                .runAsync(
+                        () -> provider.streamMessage(prompt, delta -> {
+                            accumulated.append(delta);
+                            sendEvent(
+                                    emitter,
+                                    emitterLock,
+                                    "token",
+                                    new StreamTokenEvent(providerName, delta)
+                            );
+                        }),
+                        aiExecutor
+                )
+                .orTimeout(requestTimeoutSeconds, TimeUnit.SECONDS)
+                .whenComplete((ignoredValue, throwable) -> {
+                    if (throwable == null) {
+                        String content = accumulated.toString();
+
+                        if (content.isBlank()) {
+                            log.warn(
+                                    "{} sağlayıcısı streaming sırasında boş cevap döndürdü.",
+                                    providerName
+                            );
+
+                            sendEvent(
+                                    emitter,
+                                    emitterLock,
+                                    "error",
+                                    new StreamErrorEvent(
+                                            providerName,
+                                            "Bu yapay zekâdan yanıt alınamadı. Tekrar deneyin."
+                                    )
+                            );
+                        } else {
+                            AiResponse saved = conversationService.saveRetriedResponse(
+                                    turn.conversationId(),
+                                    turn.userMessageId(),
+                                    AiResponse.success(null, providerName, content)
+                            );
+
+                            sendEvent(
+                                    emitter,
+                                    emitterLock,
+                                    "done",
+                                    new StreamDoneEvent(
+                                            providerName,
+                                            saved.messageId(),
+                                            saved.content()
+                                    )
+                            );
+                        }
+                    } else {
+                        Throwable cause = throwable instanceof CompletionException
+                                ? throwable.getCause()
+                                : throwable;
+
+                        String errorMessage = cause instanceof TimeoutException
+                                ? "Yanıt zaman aşımına uğradı. Tekrar deneyin."
+                                : "Bu yapay zekâdan yanıt alınamadı. Tekrar deneyin.";
+
+                        log.warn(
+                                "{} sağlayıcısından streaming yanıtı alınamadı: {}",
+                                providerName,
+                                cause.getMessage(),
+                                cause
+                        );
+
+                        sendEvent(
+                                emitter,
+                                emitterLock,
+                                "error",
+                                new StreamErrorEvent(providerName, errorMessage)
+                        );
+                    }
+
+                    if (remaining.decrementAndGet() == 0) {
+                        synchronized (emitterLock) {
+                            emitter.complete();
+                        }
+                    }
+                });
+    }
+
+    private void sendEvent(
+            SseEmitter emitter,
+            Object emitterLock,
+            String eventName,
+            Object data
+    ) {
+        synchronized (emitterLock) {
+            try {
+                emitter.send(
+                        SseEmitter.event()
+                                .name(eventName)
+                                .data(data, MediaType.APPLICATION_JSON)
+                );
+            } catch (Exception exception) {
+                log.debug(
+                        "SSE gönderimi başarısız (istemci muhtemelen "
+                                + "bağlantıyı kapattı): {}",
+                        exception.getMessage()
+                );
+            }
+        }
+    }
+
+    private AiProvider resolveProvider(AiProviderType providerType) {
+        return providers.stream()
+                .filter(candidate ->
+                        candidate.getProviderType() == providerType
+                )
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "Desteklenmeyen AI sağlayıcısı."
+                ));
     }
 
     private CompletableFuture<AiResponse> requestProvider(
@@ -131,9 +313,18 @@ public class AiComparisonService {
                         requestTimeoutSeconds,
                         TimeUnit.SECONDS
                 )
-                .exceptionally(exception -> AiResponse.failure(
-                        providerName,
-                        "Bu yapay zekâdan yanıt alınamadı. Tekrar deneyin."
-                ));
+                .exceptionally(exception -> {
+                    log.warn(
+                            "{} sağlayıcısından yanıt alınamadı: {}",
+                            providerName,
+                            exception.getMessage(),
+                            exception
+                    );
+
+                    return AiResponse.failure(
+                            providerName,
+                            "Bu yapay zekâdan yanıt alınamadı. Tekrar deneyin."
+                    );
+                });
     }
 }

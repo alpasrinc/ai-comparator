@@ -1,11 +1,14 @@
 package com.example.aicomparator.ai;
 
+import java.util.function.Consumer;
+
 import jakarta.annotation.PreDestroy;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import com.example.aicomparator.entity.AiProviderType;
 import com.google.genai.Client;
+import com.google.genai.ResponseStream;
 import com.google.genai.types.GenerateContentConfig;
 import com.google.genai.types.GenerateContentResponse;
 
@@ -48,6 +51,30 @@ public AiProviderType getProviderType() {
         }
 
         return content;
+    }
+
+    @Override
+    public void streamMessage(String userMessage, Consumer<String> onToken) {
+        GenerateContentConfig config = GenerateContentConfig.builder()
+                .maxOutputTokens(maxOutputTokens)
+                .build();
+
+        try (
+                ResponseStream<GenerateContentResponse> stream =
+                        client.models.generateContentStream(
+                                model,
+                                userMessage,
+                                config
+                        )
+        ) {
+            for (GenerateContentResponse chunk : stream) {
+                String text = chunk.text();
+
+                if (text != null && !text.isEmpty()) {
+                    onToken.accept(text);
+                }
+            }
+        }
     }
 
     @PreDestroy

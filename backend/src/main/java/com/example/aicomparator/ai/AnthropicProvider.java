@@ -1,5 +1,6 @@
 package com.example.aicomparator.ai;
 
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -7,8 +8,10 @@ import org.springframework.stereotype.Service;
 import com.example.aicomparator.entity.AiProviderType;
 import com.anthropic.client.AnthropicClient;
 import com.anthropic.client.okhttp.AnthropicOkHttpClient;
+import com.anthropic.core.http.StreamResponse;
 import com.anthropic.models.messages.Message;
 import com.anthropic.models.messages.MessageCreateParams;
+import com.anthropic.models.messages.RawMessageStreamEvent;
 
 @Service
 public class AnthropicProvider implements AiProvider  {
@@ -51,5 +54,27 @@ public AiProviderType getProviderType() {
         }
 
         return content;
+    }
+
+    @Override
+    public void streamMessage(String userMessage, Consumer<String> onToken) {
+        MessageCreateParams params = MessageCreateParams.builder()
+                .model(model)
+                .maxTokens(maxOutputTokens)
+                .addUserMessage(userMessage)
+                .build();
+
+        try (
+                StreamResponse<RawMessageStreamEvent> stream =
+                        client.messages().createStreaming(params)
+        ) {
+            stream.stream().forEach(event ->
+                    event.contentBlockDelta().ifPresent(blockDelta ->
+                            blockDelta.delta().text().ifPresent(
+                                    textDelta -> onToken.accept(textDelta.text())
+                            )
+                    )
+            );
+        }
     }
 }

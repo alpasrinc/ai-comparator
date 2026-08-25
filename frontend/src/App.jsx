@@ -3,12 +3,12 @@ import AiPanel from './components/AiPanel'
 import ChatInput from './components/ChatInput'
 import ConversationSidebar from './components/ConversationSidebar'
 import {
-  compareMessage,
   getConversation,
   getConversations,
   getHealth,
   retryProvider,
   selectActiveMessage,
+  streamCompareMessage,
 } from './services/api'
 import './App.css'
 
@@ -123,7 +123,15 @@ function App() {
 
   async function handleSend(message) {
     setSubmittedMessage(message)
-    setResponses([])
+    setResponses(
+      PROVIDERS.map((provider) => ({
+        provider,
+        content: '',
+        messageId: null,
+        error: null,
+        streaming: true,
+      })),
+    )
     setSelectedMessageId(null)
     setSelectedProvider('')
     setUserMessageId(null)
@@ -132,14 +140,46 @@ function App() {
     setIsLoading(true)
 
     try {
-      const data = await compareMessage(message, conversationId)
+      await streamCompareMessage(message, conversationId, {
+        start: (payload) => {
+          setConversationId(payload.conversationId)
+          setUserMessageId(payload.userMessageId)
+        },
+        token: ({ provider, delta }) => {
+          setResponses((current) =>
+            current.map((response) =>
+              response.provider === provider
+                ? { ...response, content: response.content + delta }
+                : response,
+            ),
+          )
+        },
+        done: ({ provider, messageId, content }) => {
+          setResponses((current) =>
+            current.map((response) =>
+              response.provider === provider
+                ? { ...response, messageId, content, streaming: false }
+                : response,
+            ),
+          )
+        },
+        error: ({ provider, message: errorMessage }) => {
+          setResponses((current) =>
+            current.map((response) =>
+              response.provider === provider
+                ? { ...response, error: errorMessage, streaming: false }
+                : response,
+            ),
+          )
+        },
+      })
 
-      setConversationId(data.conversationId)
-      setUserMessageId(data.userMessageId)
-      setResponses(data.responses)
       await refreshConversations()
     } catch (requestError) {
       setComparisonError(requestError.message)
+      setResponses((current) =>
+        current.map((response) => ({ ...response, streaming: false })),
+      )
     } finally {
       setIsLoading(false)
     }

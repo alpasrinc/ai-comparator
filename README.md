@@ -10,6 +10,8 @@ Kullanıcı beğendiği AI cevabını aktif dal olarak seçebilir. Sonraki mesaj
 
 - Tek mesajla OpenAI, Claude ve Gemini karşılaştırması
 - Üç AI isteğinin paralel çalıştırılması
+- Server-Sent Events ile parça parça (streaming) cevap gösterimi
+- Markdown ve kod bloklarının render edilmesi
 - Sağlayıcı bazında loading, hata ve tekrar deneme durumları
 - Bir sağlayıcı hata verdiğinde diğer cevapların korunması
 - Kullanıcının istediği cevaptan konuşmaya devam edebilmesi
@@ -59,7 +61,7 @@ Yeni isteğin context'i oluşturulurken kullanılmayan alternatif cevaplar dahil
 | Frontend | React 19, JavaScript, Vite 8, CSS |
 | Backend | Java 21, Spring Boot 4, Spring Web MVC |
 | Veri erişimi | Spring Data JPA, Hibernate |
-| Veritabanı | MySQL 8.4 |
+| Veritabanı | MySQL 8.4, Flyway (şema migrasyonları) |
 | AI servisleri | OpenAI, Anthropic Claude, Google Gemini |
 | Eş zamanlılık | `CompletableFuture`, Java virtual threads |
 | Test | JUnit, Spring Boot Test, AssertJ, Mockito |
@@ -205,12 +207,28 @@ Uygulama varsayılan olarak `http://localhost:5173` adresinde açılır.
 
 Farklı bir backend adresi kullanılacaksa frontend ortamına `VITE_API_BASE_URL` eklenebilir.
 
+### 6. (Alternatif) Docker Compose ile çalıştırın
+
+MySQL, backend ve frontend'i tek komutla ayağa kaldırmak için:
+
+```powershell
+$env:AI_COMPARATOR_DB_PASSWORD="GUCLU_BIR_PAROLA"
+$env:OPENAI_API_KEY="OPENAI_API_KEY"
+$env:ANTHROPIC_API_KEY="ANTHROPIC_API_KEY"
+$env:GEMINI_API_KEY="GEMINI_API_KEY"
+
+docker compose up --build
+```
+
+Frontend `http://localhost:5173`, backend `http://localhost:8080` adresinde çalışır.
+
 ## API özeti
 
 | Metot | Endpoint | Açıklama |
 | --- | --- | --- |
 | `GET` | `/api/health` | Backend sağlık kontrolü |
-| `POST` | `/api/chat/compare` | Mesajı üç AI sağlayıcısına gönderir |
+| `POST` | `/api/chat/compare` | Mesajı üç AI sağlayıcısına gönderir (tüm cevaplar tamamlandığında döner) |
+| `POST` | `/api/chat/compare/stream` | Aynı işlemi Server-Sent Events ile parça parça (streaming) döner |
 | `POST` | `/api/chat/retry` | Başarısız bir sağlayıcıyı yeniden dener |
 | `POST` | `/api/chat/openai` | Yalnızca OpenAI çağrısı yapar |
 | `POST` | `/api/chat/anthropic` | Yalnızca Anthropic çağrısı yapar |
@@ -254,6 +272,19 @@ Başarılı cevap yapısı:
 
 Bir sağlayıcı hata verirse diğer cevaplar korunur ve ilgili response içinde `error` alanı doldurulur.
 
+### Streaming örneği
+
+`POST /api/chat/compare/stream` aynı gövdeyi kabul eder ve `text/event-stream` formatında olay yayınlar:
+
+| Olay | İçerik |
+| --- | --- |
+| `start` | `{ conversationId, userMessageId }` |
+| `token` | `{ provider, delta }` — sağlayıcıdan gelen metin parçası |
+| `done` | `{ provider, messageId, content }` — sağlayıcı tamamlandı |
+| `error` | `{ provider, message }` — sağlayıcı hata verdi veya zaman aşımına uğradı |
+
+Üç sağlayıcının tamamı bitince (başarı/hata fark etmeksizin) bağlantı kapanır.
+
 ## Test ve kalite kontrolleri
 
 Backend testleri:
@@ -292,9 +323,7 @@ Mevcut backend test paketi şunları kapsar:
 
 ## Gelecek geliştirmeler
 
-- Streaming cevaplar ve SSE
-- Markdown ve kod bloklarının render edilmesi
-- Syntax highlighting
+- Syntax highlighting (kod blokları şu an düz monospace render ediliyor)
 - Model seçimi
 - Token kullanımı ve gecikme ölçümü
 - Konuşma arama, yeniden adlandırma ve silme
