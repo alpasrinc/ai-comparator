@@ -1046,3 +1046,194 @@
     animation: none;
   }
 }
+
+.branch-panel {
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.4);
+  overflow: hidden;
+}
+
+.branch-panel__toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  color: #cbd5e1;
+  background: transparent;
+  border: none;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+.branch-panel__toggle:hover {
+  color: #f8fafc;
+}
+
+.branch-panel__body {
+  padding: 4px 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.branch-panel__tree {
+  max-height: 220px;
+  overflow-y: auto;
+  padding-top: 12px;
+}
+
+.branch-panel__history {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.branch-panel__preview {
+  padding: 12px 14px;
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 10px;
+}
+
+.branch-panel__preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+  margin-bottom: 6px;
+}
+
+.branch-panel__preview-header button {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.branch-panel__preview p {
+  margin: 0;
+  color: #e2e8f0;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.branch-tree,
+.branch-tree__children {
+  list-style: none;
+  margin: 0;
+  padding-left: 0;
+}
+
+.branch-tree__children {
+  padding-left: 20px;
+  margin-top: 6px;
+  border-left: 1px dashed rgba(148, 163, 184, 0.25);
+}
+
+.branch-tree__node {
+  margin-bottom: 6px;
+}
+
+.branch-tree__question {
+  display: block;
+  padding: 4px 0;
+  color: #64748b;
+  font-size: 0.85rem;
+}
+
+.branch-tree__question--active {
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
+.branch-tree__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  margin: 2px 0;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: rgba(148, 163, 184, 0.12);
+  color: #94a3b8;
+}
+
+.branch-tree__badge--openai {
+  --badge-color: #10b981;
+}
+
+.branch-tree__badge--anthropic {
+  --badge-color: #f59e0b;
+}
+
+.branch-tree__badge--gemini {
+  --badge-color: #60a5fa;
+}
+
+.branch-tree__badge--active {
+  color: var(--badge-color);
+  background: color-mix(in srgb, var(--badge-color) 16%, transparent);
+  border-color: color-mix(in srgb, var(--badge-color) 45%, transparent);
+}
+
+.branch-tree__badge--dim {
+  opacity: 0.55;
+}
+
+.branch-tree__badge--dim:hover {
+  opacity: 1;
+}
+
+.conversation-history {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 4px;
+}
+
+.conversation-history__user {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 0.85rem;
+}
+
+.conversation-history__user::before {
+  content: 'Siz: ';
+  color: #64748b;
+  font-weight: 700;
+}
+
+.conversation-history__assistant {
+  padding: 10px 12px;
+  background: rgba(30, 41, 59, 0.5);
+  border-radius: 10px;
+  color: #e2e8f0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.conversation-history__provider {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #64748b;
+}
+
+.conversation-history__empty {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.85rem;
+}
