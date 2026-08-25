@@ -151,7 +151,6 @@ function App() {
         streaming: true,
       })),
     )
-    setSelectedMessageId(null)
     setSelectedProvider('')
     setUserMessageId(null)
     setComparisonError('')
