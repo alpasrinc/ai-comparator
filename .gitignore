@@ -7,3 +7,7 @@
 .env
 .env.*
 !.env.example
+
+# Locally generated reports and temporary working files
+output/
+tmp/
