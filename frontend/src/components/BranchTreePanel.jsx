@@ -1,11 +1,23 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import BranchTree from './BranchTree'
 import ConversationHistory from './ConversationHistory'
 import { buildConversationTree } from '../utils/conversationTree'
 
+const PROVIDER_LABELS = {
+  OPENAI: 'ChatGPT',
+  ANTHROPIC: 'Claude',
+  GEMINI: 'Gemini',
+}
+
 function BranchTreePanel({ messages, activeMessageId }) {
   const [isOpen, setIsOpen] = useState(false)
   const [previewMessage, setPreviewMessage] = useState(null)
+
+  // Clear preview when conversation changes to avoid stale preview across switches
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPreviewMessage(null)
+  }, [messages])
 
   const turnCount = messages.filter(
     (message) => message.role === 'USER',
@@ -26,6 +38,7 @@ function BranchTreePanel({ messages, activeMessageId }) {
         type="button"
         className="branch-panel__toggle"
         onClick={() => setIsOpen((open) => !open)}
+        aria-expanded={isOpen}
       >
         <span aria-hidden="true">{isOpen ? '▴' : '▾'}</span>
         Dallanma haritası ({turnCount} tur)
@@ -44,7 +57,7 @@ function BranchTreePanel({ messages, activeMessageId }) {
           {previewMessage && (
             <div className="branch-panel__preview">
               <div className="branch-panel__preview-header">
-                <span>{previewMessage.provider}</span>
+                <span>{PROVIDER_LABELS[previewMessage.provider] ?? previewMessage.provider}</span>
                 <button
                   type="button"
                   onClick={() => setPreviewMessage(null)}
