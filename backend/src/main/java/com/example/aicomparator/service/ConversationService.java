@@ -156,7 +156,8 @@ public class ConversationService {
     @Transactional(readOnly = true)
     public String buildActiveContextPrompt(
             Long conversationId,
-            String newUserContent
+            String newUserContent,
+            AiProviderType targetProvider
     ) {
         Conversation conversation = findConversation(conversationId);
         Message currentMessage = conversation.getActiveMessage();
@@ -178,16 +179,10 @@ public class ConversationService {
         Collections.reverse(activeBranch);
 
         StringBuilder prompt = new StringBuilder(
-                "Aşağıdaki konuşmanın aktif dalını dikkate alarak "
-                        + "son kullanıcı mesajını yanıtla.\n\n"
+                identityPreamble(targetProvider)
         );
 
-        for (Message message : activeBranch) {
-            prompt.append(message.getRole().name())
-                    .append(": ")
-                    .append(message.getContent())
-                    .append("\n\n");
-        }
+        appendTranscript(prompt, activeBranch);
 
         prompt.append("USER: ")
                 .append(newUserContent)
@@ -275,7 +270,8 @@ public class ConversationService {
     @Transactional(readOnly = true)
     public String buildPromptForUserMessage(
             Long conversationId,
-            Long userMessageId
+            Long userMessageId,
+            AiProviderType targetProvider
     ) {
         Message userMessage = messageRepository
                 .findByIdAndConversation_Id(userMessageId, conversationId)
@@ -291,7 +287,7 @@ public class ConversationService {
             );
         }
 
-        return buildBranchPrompt(userMessage);
+        return buildBranchPrompt(userMessage, targetProvider);
     }
 
     @Transactional
@@ -330,7 +326,10 @@ public class ConversationService {
         );
     }
 
-    private String buildBranchPrompt(Message lastMessage) {
+    private String buildBranchPrompt(
+            Message lastMessage,
+            AiProviderType targetProvider
+    ) {
         List<Message> activeBranch = new ArrayList<>();
         Message currentMessage = lastMessage;
 
@@ -342,19 +341,51 @@ public class ConversationService {
         Collections.reverse(activeBranch);
 
         StringBuilder prompt = new StringBuilder(
-                "Aşağıdaki konuşmanın aktif dalını dikkate alarak "
-                        + "son kullanıcı mesajını yanıtla.\n\n"
+                identityPreamble(targetProvider)
         );
 
-        for (Message message : activeBranch) {
-            prompt.append(message.getRole().name())
-                    .append(": ")
-                    .append(message.getContent())
-                    .append("\n\n");
-        }
+        appendTranscript(prompt, activeBranch);
 
         prompt.append("ASSISTANT:");
         return prompt.toString();
+    }
+
+    private void appendTranscript(
+            StringBuilder prompt,
+            List<Message> activeBranch
+    ) {
+        for (Message message : activeBranch) {
+            if (message.getRole() == MessageRole.ASSISTANT) {
+                prompt.append(message.getProvider().name())
+                        .append(" cevabı: ")
+                        .append(message.getContent())
+                        .append("\n\n");
+            } else {
+                prompt.append("USER: ")
+                        .append(message.getContent())
+                        .append("\n\n");
+            }
+        }
+    }
+
+    private String identityPreamble(AiProviderType targetProvider) {
+        String displayName = providerDisplayName(targetProvider);
+
+        return "Sen " + displayName + " tarafından geliştirilmiş bir yapay "
+                + "zeka asistanısın. Aşağıdaki konuşma geçmişinde farklı "
+                + "yapay zeka sağlayıcılarının cevapları, hangi sağlayıcıya "
+                + "ait olduğu belirtilerek listelenmiştir. Geçmişte başka "
+                + "bir sağlayıcının kendini nasıl tanıttığından bağımsız "
+                + "olarak, sen " + displayName + "'sin ve bu kimlikle "
+                + "cevap ver.\n\n";
+    }
+
+    private String providerDisplayName(AiProviderType providerType) {
+        return switch (providerType) {
+            case OPENAI -> "OpenAI (ChatGPT)";
+            case ANTHROPIC -> "Anthropic (Claude)";
+            case GEMINI -> "Google (Gemini)";
+        };
     }
 
     private Conversation findConversation(Long conversationId) {

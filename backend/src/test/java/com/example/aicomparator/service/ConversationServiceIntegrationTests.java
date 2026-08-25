@@ -126,18 +126,21 @@ void shouldContinueFromSelectedAssistantMessage() {
     String contextPrompt =
             conversationService.buildActiveContextPrompt(
                     firstComparison.conversationId(),
-                    "Bir örnek verir misin?"
+                    "Bir örnek verir misin?",
+                    AiProviderType.OPENAI
             );
 
     assertThat(contextPrompt)
             .contains(
+                    "OpenAI (ChatGPT)",
                     "USER: Java nedir?",
-                    "ASSISTANT: Seçilen Claude cevabı",
+                    "ANTHROPIC cevabı: Seçilen Claude cevabı",
                     "USER: Bir örnek verir misin?"
             )
             .doesNotContain(
                     "OpenAI alternatif cevabı",
-                    "Gemini alternatif cevabı"
+                    "Gemini alternatif cevabı",
+                    "ASSISTANT: Seçilen Claude cevabı"
             );
 
     CompareResponse continuation =
@@ -250,6 +253,52 @@ void shouldListAndLoadConversationHistory() {
                     "ANTHROPIC",
                     "GEMINI"
             );
+}
+
+@Test
+void shouldLabelHistoricalResponsesWithProviderNameInRetryPrompt() {
+    CompareResponse firstComparison = conversationService.saveComparison(
+            "Java nedir?",
+            List.of(
+                    new AiResponse(null, "OPENAI", "OpenAI cevabı"),
+                    new AiResponse(null, "ANTHROPIC", "Claude cevabı"),
+                    new AiResponse(null, "GEMINI", "Gemini cevabı")
+            )
+    );
+
+    AiResponse selectedResponse = firstComparison.responses().stream()
+            .filter(response -> response.provider().equals("ANTHROPIC"))
+            .findFirst()
+            .orElseThrow();
+
+    conversationService.selectActiveMessage(
+            firstComparison.conversationId(),
+            selectedResponse.messageId()
+    );
+
+    CompareResponse continuation = conversationService.saveContinuation(
+            firstComparison.conversationId(),
+            "Bir örnek verir misin?",
+            List.of(
+                    new AiResponse(null, "OPENAI", "Yeni OpenAI cevabı"),
+                    new AiResponse(null, "GEMINI", "Yeni Gemini cevabı")
+            )
+    );
+
+    String retryPrompt = conversationService.buildPromptForUserMessage(
+            continuation.conversationId(),
+            continuation.userMessageId(),
+            AiProviderType.GEMINI
+    );
+
+    assertThat(retryPrompt)
+            .contains(
+                    "Google (Gemini)",
+                    "USER: Java nedir?",
+                    "ANTHROPIC cevabı: Claude cevabı",
+                    "USER: Bir örnek verir misin?"
+            )
+            .doesNotContain("ASSISTANT: Claude cevabı");
 }
 
 @Test

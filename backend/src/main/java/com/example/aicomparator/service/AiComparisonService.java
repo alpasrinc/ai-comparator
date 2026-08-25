@@ -57,18 +57,17 @@ public class AiComparisonService {
             Long conversationId,
             String userMessage
     ) {
-        String providerPrompt = conversationId == null
-                ? userMessage
-                : conversationService.buildActiveContextPrompt(
-                        conversationId,
-                        userMessage
-                );
-
         List<CompletableFuture<AiResponse>> responseFutures =
                 providers.stream()
                         .map(provider -> requestProvider(
                                 provider,
-                                providerPrompt
+                                conversationId == null
+                                        ? userMessage
+                                        : conversationService.buildActiveContextPrompt(
+                                                conversationId,
+                                                userMessage,
+                                                provider.getProviderType()
+                                        )
                         ))
                         .toList();
 
@@ -99,7 +98,8 @@ public class AiComparisonService {
 
         String prompt = conversationService.buildPromptForUserMessage(
                 conversationId,
-                userMessageId
+                userMessageId,
+                providerType
         );
 
         AiResponse response = requestProvider(provider, prompt).join();
@@ -129,13 +129,6 @@ public class AiComparisonService {
             String userMessage,
             SseEmitter emitter
     ) {
-        String providerPrompt = conversationId == null
-                ? userMessage
-                : conversationService.buildActiveContextPrompt(
-                        conversationId,
-                        userMessage
-                );
-
         ConversationService.UserTurnResult turn = conversationId == null
                 ? conversationService.startComparison(userMessage)
                 : conversationService.startContinuation(
@@ -158,6 +151,14 @@ public class AiComparisonService {
         AtomicInteger remaining = new AtomicInteger(providers.size());
 
         for (AiProvider provider : providers) {
+            String providerPrompt = conversationId == null
+                    ? userMessage
+                    : conversationService.buildActiveContextPrompt(
+                            turn.conversationId(),
+                            userMessage,
+                            provider.getProviderType()
+                    );
+
             streamProvider(provider, providerPrompt, turn, emitter, emitterLock, remaining);
         }
     }
