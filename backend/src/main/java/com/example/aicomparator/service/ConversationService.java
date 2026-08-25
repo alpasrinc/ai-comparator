@@ -8,7 +8,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
-
+import com.example.aicomparator.dto.ConversationDetailResponse;
+import com.example.aicomparator.dto.ConversationSummaryResponse;
+import com.example.aicomparator.dto.MessageHistoryResponse;
 import com.example.aicomparator.dto.ActiveMessageResponse;
 import com.example.aicomparator.dto.AiResponse;
 import com.example.aicomparator.dto.CompareResponse;
@@ -214,4 +216,53 @@ public class ConversationService {
 
         return normalizedContent.substring(0, TITLE_MAX_LENGTH - 3) + "...";
     }
+    @Transactional(readOnly = true)
+public List<ConversationSummaryResponse> getConversations() {
+    return conversationRepository
+            .findAllByOrderByUpdatedAtDesc()
+            .stream()
+            .map(conversation -> new ConversationSummaryResponse(
+                    conversation.getId(),
+                    conversation.getTitle(),
+                    conversation.getActiveMessage() == null
+                            ? null
+                            : conversation.getActiveMessage().getId(),
+                    conversation.getCreatedAt(),
+                    conversation.getUpdatedAt()
+            ))
+            .toList();
+}
+
+@Transactional(readOnly = true)
+public ConversationDetailResponse getConversation(Long conversationId) {
+    Conversation conversation = findConversation(conversationId);
+
+    List<MessageHistoryResponse> messages = messageRepository
+            .findByConversation_IdOrderByCreatedAtAsc(conversationId)
+            .stream()
+            .map(message -> new MessageHistoryResponse(
+                    message.getId(),
+                    message.getParentMessage() == null
+                            ? null
+                            : message.getParentMessage().getId(),
+                    message.getRole().name(),
+                    message.getProvider() == null
+                            ? null
+                            : message.getProvider().name(),
+                    message.getContent(),
+                    message.getCreatedAt()
+            ))
+            .toList();
+
+    return new ConversationDetailResponse(
+            conversation.getId(),
+            conversation.getTitle(),
+            conversation.getActiveMessage() == null
+                    ? null
+                    : conversation.getActiveMessage().getId(),
+            conversation.getCreatedAt(),
+            conversation.getUpdatedAt(),
+            messages
+    );
+}
 }

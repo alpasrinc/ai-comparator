@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react'
 import AiPanel from './components/AiPanel'
 import ChatInput from './components/ChatInput'
+import ConversationSidebar from './components/ConversationSidebar'
 import {
   compareMessage,
+  getConversation,
+  getConversations,
   getHealth,
   selectActiveMessage,
 } from './services/api'
@@ -13,6 +16,10 @@ const PROVIDERS = ['OPENAI', 'ANTHROPIC', 'GEMINI']
 function App() {
   const [backendStatus, setBackendStatus] = useState('Kontrol ediliyor...')
   const [backendError, setBackendError] = useState('')
+  const [conversations, setConversations] = useState([])
+  const [isLoadingConversations, setIsLoadingConversations] = useState(true)
+  const [isOpeningConversation, setIsOpeningConversation] = useState(false)
+  const [historyError, setHistoryError] = useState('')
   const [conversationId, setConversationId] = useState(null)
   const [submittedMessage, setSubmittedMessage] = useState('')
   const [responses, setResponses] = useState([])
@@ -32,7 +39,82 @@ function App() {
         setBackendError(requestError.message)
         setBackendStatus('Bağlantı kurulamadı')
       })
+
+    getConversations()
+      .then((data) => {
+        setConversations(data)
+      })
+      .catch((requestError) => {
+        setHistoryError(requestError.message)
+      })
+      .finally(() => {
+        setIsLoadingConversations(false)
+      })
   }, [])
+
+  async function refreshConversations() {
+    try {
+      const data = await getConversations()
+      setConversations(data)
+      setHistoryError('')
+    } catch (requestError) {
+      setHistoryError(requestError.message)
+    }
+  }
+
+  async function handleOpenConversation(selectedConversationId) {
+    setIsOpeningConversation(true)
+    setHistoryError('')
+    setComparisonError('')
+    setSelectionError('')
+
+    try {
+      const conversation = await getConversation(selectedConversationId)
+
+      const latestUserMessage = [...conversation.messages]
+        .reverse()
+        .find((message) => message.role === 'USER')
+
+      const latestResponses = latestUserMessage
+        ? conversation.messages
+            .filter(
+              (message) =>
+                message.role === 'ASSISTANT' &&
+                message.parentMessageId === latestUserMessage.id,
+            )
+            .map((message) => ({
+              messageId: message.id,
+              provider: message.provider,
+              content: message.content,
+            }))
+        : []
+
+      const activeMessage = conversation.messages.find(
+        (message) => message.id === conversation.activeMessageId,
+      )
+
+      setConversationId(conversation.id)
+      setSubmittedMessage(latestUserMessage?.content ?? '')
+      setResponses(latestResponses)
+      setSelectedMessageId(conversation.activeMessageId)
+      setSelectedProvider(activeMessage?.provider ?? '')
+    } catch (requestError) {
+      setHistoryError(requestError.message)
+    } finally {
+      setIsOpeningConversation(false)
+    }
+  }
+
+  function handleNewConversation() {
+    setConversationId(null)
+    setSubmittedMessage('')
+    setResponses([])
+    setSelectedMessageId(null)
+    setSelectedProvider('')
+    setComparisonError('')
+    setSelectionError('')
+    setHistoryError('')
+  }
 
   async function handleSend(message) {
     setSubmittedMessage(message)
@@ -48,6 +130,7 @@ function App() {
 
       setConversationId(data.conversationId)
       setResponses(data.responses)
+      await refreshConversations()
     } catch (requestError) {
       setComparisonError(requestError.message)
     } finally {
@@ -71,6 +154,7 @@ function App() {
 
       setSelectedMessageId(result.activeMessageId)
       setSelectedProvider(result.provider)
+      await refreshConversations()
     } catch (requestError) {
       setSelectionError(requestError.message)
     } finally {
@@ -78,91 +162,120 @@ function App() {
     }
   }
 
+  const selectedCurrentResponse = responses.some(
+    (response) => response.messageId === selectedMessageId,
+  )
+
   const mustSelectResponse =
-    responses.length > 0 && selectedMessageId === null
+    responses.length > 0 && !selectedCurrentResponse
 
   const inputDisabled =
-    isLoading || selectingMessageId !== null || mustSelectResponse
+    isLoading ||
+    isOpeningConversation ||
+    selectingMessageId !== null ||
+    mustSelectResponse
 
   return (
-    <main className="app">
-      <header className="app__header">
-        <div>
-          <p className="app__eyebrow">AI COMPARATOR</p>
-          <h1>Yapay zekâ cevaplarını karşılaştırın</h1>
-          <p className="app__description">
-            Tek mesaj yazın, farklı yapay zekâların cevaplarını aynı ekranda
-            inceleyin.
-          </p>
-        </div>
+    <div className="app-layout">
+      <ConversationSidebar
+        conversations={conversations}
+        activeConversationId={conversationId}
+        isLoading={isLoadingConversations}
+        onSelect={handleOpenConversation}
+        onNewConversation={handleNewConversation}
+      />
 
-        <div
-          className={`backend-status ${
-            backendError ? 'backend-status--error' : ''
-          }`}
-        >
-          <span className="backend-status__indicator" />
-          Backend: {backendStatus}
-        </div>
-      </header>
+      <main className="app">
+        <header className="app__header">
+          <div>
+            <p className="app__eyebrow">AI COMPARATOR</p>
+            <h1>Yapay zekâ cevaplarını karşılaştırın</h1>
+            <p className="app__description">
+              Tek mesaj yazın, farklı yapay zekâların cevaplarını aynı ekranda
+              inceleyin.
+            </p>
+          </div>
 
-      {submittedMessage && (
-        <div className="submitted-message">
-          <span>Gönderilen mesaj</span>
-          <p>{submittedMessage}</p>
-        </div>
-      )}
+          <div
+            className={`backend-status ${
+              backendError ? 'backend-status--error' : ''
+            }`}
+          >
+            <span className="backend-status__indicator" />
+            Backend: {backendStatus}
+          </div>
+        </header>
 
-      {mustSelectResponse && !isLoading && (
-        <div className="selection-notice">
-          Devam etmek için aşağıdaki AI cevaplarından birini seçin.
-        </div>
-      )}
+        {historyError && (
+          <div className="selection-notice selection-notice--error">
+            Geçmiş yüklenemedi: {historyError}
+          </div>
+        )}
 
-      {selectedMessageId && (
-        <div className="selection-notice selection-notice--success">
-          {selectedProvider} cevabı seçildi. Yeni mesajınız bu dal üzerinden
-          devam edecek.
-        </div>
-      )}
+        {isOpeningConversation && (
+          <div className="selection-notice">
+            Konuşma geçmişi yükleniyor...
+          </div>
+        )}
 
-      {selectionError && (
-        <div className="selection-notice selection-notice--error">
-          {selectionError}
-        </div>
-      )}
+        {submittedMessage && (
+          <div className="submitted-message">
+            <span>Son kullanıcı mesajı</span>
+            <p>{submittedMessage}</p>
+          </div>
+        )}
 
-      <section className="ai-grid" aria-label="Yapay zekâ cevapları">
-        {PROVIDERS.map((provider) => {
-          const providerResponse = responses.find(
-            (response) => response.provider === provider,
-          )
+        {mustSelectResponse && !isLoading && (
+          <div className="selection-notice">
+            Devam etmek için aşağıdaki AI cevaplarından birini seçin.
+          </div>
+        )}
 
-          return (
-            <AiPanel
-              key={provider}
-              provider={provider}
-              response={providerResponse}
-              isLoading={isLoading}
-              error={comparisonError}
-              isSelected={
-                selectedMessageId === providerResponse?.messageId
-              }
-              isSelecting={
-                selectingMessageId === providerResponse?.messageId
-              }
-              onSelect={handleSelect}
-            />
-          )
-        })}
-      </section>
+        {selectedCurrentResponse && (
+          <div className="selection-notice selection-notice--success">
+            {selectedProvider} cevabı seçildi. Yeni mesajınız bu dal üzerinden
+            devam edecek.
+          </div>
+        )}
 
-      <ChatInput
-  onSend={handleSend}
-  disabled={inputDisabled}
-  isLoading={isLoading}
- />
-    </main>
+        {selectionError && (
+          <div className="selection-notice selection-notice--error">
+            {selectionError}
+          </div>
+        )}
+
+        <section className="ai-grid" aria-label="Yapay zekâ cevapları">
+          {PROVIDERS.map((provider) => {
+            const providerResponse = responses.find(
+              (response) => response.provider === provider,
+            )
+
+            return (
+              <AiPanel
+                key={provider}
+                provider={provider}
+                response={providerResponse}
+                isLoading={isLoading}
+                error={comparisonError}
+                isSelected={
+                  selectedMessageId === providerResponse?.messageId
+                }
+                isSelecting={
+                  selectingMessageId === providerResponse?.messageId
+                }
+                onSelect={handleSelect}
+              />
+            )
+          })}
+        </section>
+
+        <ChatInput
+          onSend={handleSend}
+          disabled={inputDisabled}
+          isLoading={isLoading}
+        />
+      </main>
+    </div>
   )
 }
 

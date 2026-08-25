@@ -40,3 +40,11 @@ export function selectActiveMessage(conversationId, messageId) {
     },
   )
 }
+
+export function getConversations() {
+  return request('/api/conversations')
+}
+
+export function getConversation(conversationId) {
+  return request(`/api/conversations/${conversationId}`)
+}

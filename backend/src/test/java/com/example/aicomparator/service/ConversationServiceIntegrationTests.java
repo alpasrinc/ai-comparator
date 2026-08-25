@@ -182,4 +182,73 @@ void shouldContinueFromSelectedAssistantMessage() {
                     .getId()
     ).isEqualTo(selectedResponse.messageId());
 }
+@Test
+void shouldListAndLoadConversationHistory() {
+    CompareResponse savedComparison =
+            conversationService.saveComparison(
+                    "Spring Data JPA nedir?",
+                    List.of(
+                            new AiResponse(
+                                    null,
+                                    "OPENAI",
+                                    "OpenAI geçmiş cevabı"
+                            ),
+                            new AiResponse(
+                                    null,
+                                    "ANTHROPIC",
+                                    "Claude geçmiş cevabı"
+                            ),
+                            new AiResponse(
+                                    null,
+                                    "GEMINI",
+                                    "Gemini geçmiş cevabı"
+                            )
+                    )
+            );
+
+    assertThat(conversationService.getConversations())
+            .anySatisfy(conversation -> {
+                assertThat(conversation.id())
+                        .isEqualTo(savedComparison.conversationId());
+                assertThat(conversation.title())
+                        .isEqualTo("Spring Data JPA nedir?");
+                assertThat(conversation.activeMessageId())
+                        .isNull();
+            });
+
+    var conversationDetail = conversationService.getConversation(
+            savedComparison.conversationId()
+    );
+
+    assertThat(conversationDetail.id())
+            .isEqualTo(savedComparison.conversationId());
+    assertThat(conversationDetail.title())
+            .isEqualTo("Spring Data JPA nedir?");
+    assertThat(conversationDetail.activeMessageId()).isNull();
+
+    assertThat(conversationDetail.messages())
+            .hasSize(4);
+
+    assertThat(conversationDetail.messages())
+            .filteredOn(message -> message.role().equals("USER"))
+            .singleElement()
+            .satisfies(message -> {
+                assertThat(message.id())
+                        .isEqualTo(savedComparison.userMessageId());
+                assertThat(message.parentMessageId()).isNull();
+                assertThat(message.provider()).isNull();
+                assertThat(message.content())
+                        .isEqualTo("Spring Data JPA nedir?");
+            });
+
+    assertThat(conversationDetail.messages())
+            .filteredOn(message -> message.role().equals("ASSISTANT"))
+            .hasSize(3)
+            .extracting(message -> message.provider())
+            .containsExactlyInAnyOrder(
+                    "OPENAI",
+                    "ANTHROPIC",
+                    "GEMINI"
+            );
+}
 }

@@ -5,7 +5,12 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import java.util.List;
 
+import org.springframework.web.bind.annotation.GetMapping;
+
+import com.example.aicomparator.dto.ConversationDetailResponse;
+import com.example.aicomparator.dto.ConversationSummaryResponse;
 import com.example.aicomparator.dto.ActiveMessageResponse;
 import com.example.aicomparator.dto.SelectMessageRequest;
 import com.example.aicomparator.service.ConversationService;
@@ -23,6 +28,18 @@ public class ConversationController {
     ) {
         this.conversationService = conversationService;
     }
+
+    @GetMapping
+public List<ConversationSummaryResponse> getConversations() {
+    return conversationService.getConversations();
+}
+
+@GetMapping("/{conversationId}")
+public ConversationDetailResponse getConversation(
+        @PathVariable Long conversationId
+) {
+    return conversationService.getConversation(conversationId);
+}
 
     @PostMapping("/{conversationId}/active-message")
     public ActiveMessageResponse selectActiveMessage(
