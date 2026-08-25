@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import AiPanel from './components/AiPanel'
+import BranchTreePanel from './components/BranchTreePanel'
 import ChatInput from './components/ChatInput'
 import ConversationSidebar from './components/ConversationSidebar'
 import {
@@ -32,6 +33,7 @@ function App() {
   const [comparisonError, setComparisonError] = useState('')
   const [selectionError, setSelectionError] = useState('')
   const [retryingProvider, setRetryingProvider] = useState('')
+  const [conversationMessages, setConversationMessages] = useState([])
 
   useEffect(() => {
     getHealth()
@@ -62,6 +64,20 @@ function App() {
       setHistoryError('')
     } catch (requestError) {
       setHistoryError(requestError.message)
+    }
+  }
+
+  async function refreshConversationDetail(id) {
+    if (!id) {
+      setConversationMessages([])
+      return
+    }
+
+    try {
+      const conversation = await getConversation(id)
+      setConversationMessages(conversation.messages)
+    } catch {
+      // Dallanma şeridi güncel veriyi gösteremeyebilir; ana akışı etkilemez.
     }
   }
 
@@ -102,6 +118,7 @@ function App() {
       setResponses(latestResponses)
       setSelectedMessageId(conversation.activeMessageId)
       setSelectedProvider(activeMessage?.provider ?? '')
+      setConversationMessages(conversation.messages)
     } catch (requestError) {
       setHistoryError(requestError.message)
     } finally {
@@ -119,6 +136,7 @@ function App() {
     setComparisonError('')
     setSelectionError('')
     setHistoryError('')
+    setConversationMessages([])
   }
 
   async function handleSend(message) {
@@ -139,9 +157,12 @@ function App() {
     setSelectionError('')
     setIsLoading(true)
 
+    let resolvedConversationId = conversationId
+
     try {
       await streamCompareMessage(message, conversationId, {
         start: (payload) => {
+          resolvedConversationId = payload.conversationId
           setConversationId(payload.conversationId)
           setUserMessageId(payload.userMessageId)
         },
@@ -175,6 +196,7 @@ function App() {
       })
 
       await refreshConversations()
+      await refreshConversationDetail(resolvedConversationId)
     } catch (requestError) {
       setComparisonError(requestError.message)
       setResponses((current) =>
@@ -244,6 +266,7 @@ function App() {
       setSelectedMessageId(result.activeMessageId)
       setSelectedProvider(result.provider)
       await refreshConversations()
+      await refreshConversationDetail(conversationId)
     } catch (requestError) {
       setSelectionError(requestError.message)
     } finally {
@@ -339,6 +362,11 @@ function App() {
             {selectionError}
           </div>
         )}
+
+        <BranchTreePanel
+          messages={conversationMessages}
+          activeMessageId={selectedMessageId}
+        />
 
         <section className="ai-grid" aria-label="Yapay zekâ cevapları">
           {PROVIDERS.map((provider) => {
