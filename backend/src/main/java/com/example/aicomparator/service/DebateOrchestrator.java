@@ -42,6 +42,7 @@ public class DebateOrchestrator {
     private final DebatePromptBuilder promptBuilder;
     private final SseSupport sseSupport;
     private final long requestTimeoutSeconds;
+    private final long synthesisTimeoutSeconds;
 
     public DebateOrchestrator(
             List<AiProvider> providers,
@@ -50,7 +51,9 @@ public class DebateOrchestrator {
             DebatePromptBuilder promptBuilder,
             SseSupport sseSupport,
             @Value("${ai.request-timeout-seconds:30}")
-            long requestTimeoutSeconds
+            long requestTimeoutSeconds,
+            @Value("${ai.synthesis-timeout-seconds:90}")
+            long synthesisTimeoutSeconds
     ) {
         for (AiProvider provider : providers) {
             providersByType.put(provider.getProviderType(), provider);
@@ -60,6 +63,7 @@ public class DebateOrchestrator {
         this.promptBuilder = promptBuilder;
         this.sseSupport = sseSupport;
         this.requestTimeoutSeconds = requestTimeoutSeconds;
+        this.synthesisTimeoutSeconds = synthesisTimeoutSeconds;
     }
 
     public CompletableFuture<Void> runDebate(
@@ -217,12 +221,12 @@ public class DebateOrchestrator {
         StringBuilder accumulated = new StringBuilder();
         try {
             CompletableFuture.runAsync(() ->
-                    provider.streamMessage(prompt, delta -> {
+                    provider.streamSynthesisMessage(prompt, delta -> {
                         accumulated.append(delta);
                         sseSupport.send(emitter, lock, "token",
                                 new DebateTokenEvent(0, name, delta));
                     }), aiExecutor)
-                    .orTimeout(requestTimeoutSeconds, TimeUnit.SECONDS)
+                    .orTimeout(synthesisTimeoutSeconds, TimeUnit.SECONDS)
                     .join();
         } catch (Exception exception) {
             log.warn("Sentez sırasında hata: {}", exception.getMessage());

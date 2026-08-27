@@ -18,10 +18,19 @@ public class OpenAiProvider implements AiProvider {
 
     private final OpenAIClient client;
     private final String model;
+    private final long maxOutputTokens;
+    private final long synthesisMaxOutputTokens;
 
-    public OpenAiProvider(@Value("${openai.model}") String model) {
+    public OpenAiProvider(
+            @Value("${openai.model}") String model,
+            @Value("${openai.max-output-tokens}") long maxOutputTokens,
+            @Value("${openai.synthesis-max-output-tokens}")
+            long synthesisMaxOutputTokens
+    ) {
         this.client = OpenAIOkHttpClient.fromEnv();
         this.model = model;
+        this.maxOutputTokens = maxOutputTokens;
+        this.synthesisMaxOutputTokens = synthesisMaxOutputTokens;
     }
 
     @Override
@@ -34,6 +43,7 @@ public AiProviderType getProviderType() {
         ResponseCreateParams params = ResponseCreateParams.builder()
                 .model(model)
                 .input(message)
+                .maxOutputTokens(maxOutputTokens)
                 .build();
 
         Response response = client.responses().create(params);
@@ -54,9 +64,26 @@ public AiProviderType getProviderType() {
 
     @Override
     public void streamMessage(String userMessage, Consumer<String> onToken) {
+        streamWithLimit(userMessage, onToken, maxOutputTokens);
+    }
+
+    @Override
+    public void streamSynthesisMessage(
+            String userMessage,
+            Consumer<String> onToken
+    ) {
+        streamWithLimit(userMessage, onToken, synthesisMaxOutputTokens);
+    }
+
+    private void streamWithLimit(
+            String userMessage,
+            Consumer<String> onToken,
+            long outputTokenLimit
+    ) {
         ResponseCreateParams params = ResponseCreateParams.builder()
                 .model(model)
                 .input(userMessage)
+                .maxOutputTokens(outputTokenLimit)
                 .build();
 
         try (

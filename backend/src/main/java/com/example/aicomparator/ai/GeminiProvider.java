@@ -18,14 +18,18 @@ public class GeminiProvider implements AiProvider {
     private final Client client;
     private final String model;
     private final int maxOutputTokens;
+    private final int synthesisMaxOutputTokens;
 
     public GeminiProvider(
             @Value("${gemini.model}") String model,
-            @Value("${gemini.max-output-tokens}") int maxOutputTokens
+            @Value("${gemini.max-output-tokens}") int maxOutputTokens,
+            @Value("${gemini.synthesis-max-output-tokens}")
+            int synthesisMaxOutputTokens
     ) {
         this.client = new Client();
         this.model = model;
         this.maxOutputTokens = maxOutputTokens;
+        this.synthesisMaxOutputTokens = synthesisMaxOutputTokens;
     }
 
     @Override
@@ -55,8 +59,24 @@ public AiProviderType getProviderType() {
 
     @Override
     public void streamMessage(String userMessage, Consumer<String> onToken) {
+        streamWithLimit(userMessage, onToken, maxOutputTokens);
+    }
+
+    @Override
+    public void streamSynthesisMessage(
+            String userMessage,
+            Consumer<String> onToken
+    ) {
+        streamWithLimit(userMessage, onToken, synthesisMaxOutputTokens);
+    }
+
+    private void streamWithLimit(
+            String userMessage,
+            Consumer<String> onToken,
+            int outputTokenLimit
+    ) {
         GenerateContentConfig config = GenerateContentConfig.builder()
-                .maxOutputTokens(maxOutputTokens)
+                .maxOutputTokens(outputTokenLimit)
                 .build();
 
         try (

@@ -15,4 +15,15 @@ public interface AiProvider {
      * çağrılır. Akış tamamlanana kadar bloklar.
      */
     void streamMessage(String userMessage, Consumer<String> onToken);
+
+    /**
+     * Münazara sonunda daha uzun ortak cevap üretmek için sağlayıcının
+     * senteze özel çıktı limitini kullanır.
+     */
+    default void streamSynthesisMessage(
+            String userMessage,
+            Consumer<String> onToken
+    ) {
+        streamMessage(userMessage, onToken);
+    }
 }

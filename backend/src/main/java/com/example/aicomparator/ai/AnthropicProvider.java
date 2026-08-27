@@ -19,14 +19,18 @@ public class AnthropicProvider implements AiProvider  {
     private final AnthropicClient client;
     private final String model;
     private final long maxOutputTokens;
+    private final long synthesisMaxOutputTokens;
 
     public AnthropicProvider(
             @Value("${anthropic.model}") String model,
-            @Value("${anthropic.max-output-tokens}") long maxOutputTokens
+            @Value("${anthropic.max-output-tokens}") long maxOutputTokens,
+            @Value("${anthropic.synthesis-max-output-tokens}")
+            long synthesisMaxOutputTokens
     ) {
         this.client = AnthropicOkHttpClient.fromEnv();
         this.model = model;
         this.maxOutputTokens = maxOutputTokens;
+        this.synthesisMaxOutputTokens = synthesisMaxOutputTokens;
     }
 
     @Override
@@ -36,11 +40,7 @@ public AiProviderType getProviderType() {
 
     @Override
     public String sendMessage(String userMessage) {
-        MessageCreateParams params = MessageCreateParams.builder()
-                .model(model)
-                .maxTokens(maxOutputTokens)
-                .addUserMessage(userMessage)
-                .build();
+        MessageCreateParams params = createParams(userMessage, maxOutputTokens);
 
         Message response = client.messages().create(params);
 
@@ -58,11 +58,24 @@ public AiProviderType getProviderType() {
 
     @Override
     public void streamMessage(String userMessage, Consumer<String> onToken) {
-        MessageCreateParams params = MessageCreateParams.builder()
-                .model(model)
-                .maxTokens(maxOutputTokens)
-                .addUserMessage(userMessage)
-                .build();
+        streamWithLimit(userMessage, onToken, maxOutputTokens);
+    }
+
+    @Override
+    public void streamSynthesisMessage(
+            String userMessage,
+            Consumer<String> onToken
+    ) {
+        streamWithLimit(userMessage, onToken, synthesisMaxOutputTokens);
+    }
+
+    private void streamWithLimit(
+            String userMessage,
+            Consumer<String> onToken,
+            long outputTokenLimit
+    ) {
+        MessageCreateParams params = createParams(
+                userMessage, outputTokenLimit);
 
         try (
                 StreamResponse<RawMessageStreamEvent> stream =
@@ -76,5 +89,16 @@ public AiProviderType getProviderType() {
                     )
             );
         }
+    }
+
+    private MessageCreateParams createParams(
+            String userMessage,
+            long outputTokenLimit
+    ) {
+        return MessageCreateParams.builder()
+                .model(model)
+                .maxTokens(outputTokenLimit)
+                .addUserMessage(userMessage)
+                .build();
     }
 }

@@ -48,7 +48,8 @@ class DebateOrchestratorTests {
                 debateService,
                 new DebatePromptBuilder(),
                 new SseSupport(),
-                5
+                5,
+                10
         );
 
         DebateRequest request = new DebateRequest(
@@ -74,6 +75,14 @@ class DebateOrchestratorTests {
 
         org.mockito.Mockito.verify(debateService)
                 .saveSynthesisMessage(eq(42L), eq(AiProviderType.OPENAI), any());
+        org.mockito.Mockito.verify(openAi, org.mockito.Mockito.times(2))
+                .streamMessage(any(), any());
+        org.mockito.Mockito.verify(openAi)
+                .streamSynthesisMessage(any(), any());
+        org.mockito.Mockito.verify(gemini, org.mockito.Mockito.times(2))
+                .streamMessage(any(), any());
+        org.mockito.Mockito.verify(gemini, org.mockito.Mockito.never())
+                .streamSynthesisMessage(any(), any());
     }
 
     @Test
@@ -90,7 +99,8 @@ class DebateOrchestratorTests {
                 debateService,
                 new DebatePromptBuilder(),
                 new SseSupport(),
-                5
+                5,
+                10
         );
 
         DebateRequest request = new DebateRequest(
@@ -123,6 +133,11 @@ class DebateOrchestratorTests {
             onToken.accept(chunk);
             return null;
         }).when(provider).streamMessage(any(), any());
+        org.mockito.Mockito.doAnswer(invocation -> {
+            Consumer<String> onToken = invocation.getArgument(1);
+            onToken.accept(chunk);
+            return null;
+        }).when(provider).streamSynthesisMessage(any(), any());
         return provider;
     }
 

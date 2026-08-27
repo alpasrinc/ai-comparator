@@ -146,9 +146,14 @@ Gerekli değişkenler:
 | `AI_REQUEST_TIMEOUT_SECONDS` | Hayır | AI çağrısı timeout süresi; varsayılan `30` |
 | `OPENAI_MODEL` | Hayır | OpenAI model override değeri |
 | `ANTHROPIC_MODEL` | Hayır | Claude model override değeri |
-| `ANTHROPIC_MAX_OUTPUT_TOKENS` | Hayır | Claude çıktı token sınırı |
+| `OPENAI_MAX_OUTPUT_TOKENS` | Hayır | OpenAI normal cevap token sınırı (varsayılan: 2048) |
+| `OPENAI_SYNTHESIS_MAX_OUTPUT_TOKENS` | Hayır | OpenAI münazara sentezi token sınırı (varsayılan: 4096) |
+| `ANTHROPIC_MAX_OUTPUT_TOKENS` | Hayır | Claude normal cevap token sınırı (varsayılan: 2048) |
+| `ANTHROPIC_SYNTHESIS_MAX_OUTPUT_TOKENS` | Hayır | Claude münazara sentezi token sınırı (varsayılan: 4096) |
 | `GEMINI_MODEL` | Hayır | Gemini model override değeri |
-| `GEMINI_MAX_OUTPUT_TOKENS` | Hayır | Gemini çıktı token sınırı |
+| `GEMINI_MAX_OUTPUT_TOKENS` | Hayır | Gemini normal cevap token sınırı (varsayılan: 2048) |
+| `GEMINI_SYNTHESIS_MAX_OUTPUT_TOKENS` | Hayır | Gemini münazara sentezi token sınırı (varsayılan: 4096) |
+| `AI_SYNTHESIS_TIMEOUT_SECONDS` | Hayır | Münazara sentezi zaman aşımı (varsayılan: 90 saniye) |
 
 PowerShell oturumu için:
 
