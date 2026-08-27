@@ -262,9 +262,11 @@ function CompareView({ backendStatus, backendError }) {
     }
   }
 
-  const selectedCurrentResponse = responses.some(
-    (response) => response.messageId === selectedMessageId,
-  )
+  const selectedCurrentResponse =
+    selectedMessageId != null &&
+    responses.some(
+      (response) => response.messageId === selectedMessageId,
+    )
 
   const mustSelectResponse =
     responses.length > 0 && !selectedCurrentResponse
