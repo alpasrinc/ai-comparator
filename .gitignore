@@ -11,3 +11,6 @@
 # Locally generated reports and temporary working files
 output/
 tmp/
+
+# Superpowers brainstorming mockups
+.superpowers/
