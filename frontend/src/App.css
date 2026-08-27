@@ -1285,3 +1285,33 @@
   color: #64748b;
   font-size: 0.85rem;
 }
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.tab-bar {
+  display: flex;
+  gap: 4px;
+  padding: 8px 16px 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.tab {
+  padding: 10px 20px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 8px 8px 0 0;
+  opacity: 0.6;
+}
+
+.tab--active {
+  opacity: 1;
+  background: rgba(148, 163, 184, 0.12);
+}
