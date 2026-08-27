@@ -2,7 +2,10 @@
 
 Tek bir kullanıcı mesajını OpenAI, Anthropic Claude ve Google Gemini servislerine aynı anda gönderen; cevapları karşılaştırmalı panellerde sunan full-stack web uygulaması.
 
-Kullanıcı beğendiği AI cevabını aktif dal olarak seçebilir. Sonraki mesaj, yalnızca seçilen konuşma geçmişi bağlam alınarak yeniden üç sağlayıcıya paralel biçimde gönderilir.
+Uygulama iki moddan oluşur:
+
+- **Karşılaştırma:** Aynı mesaj üç sağlayıcıya paralel gönderilir, cevaplar yan yana kıyaslanır. Kullanıcı beğendiği AI cevabını aktif dal olarak seçer; sonraki mesaj yalnızca seçilen konuşma geçmişi bağlam alınarak yeniden üç sağlayıcıya gönderilir.
+- **Münazara:** Bir konu verilir; seçilen sağlayıcılar konuyu turlar boyunca tartışır, her turda birbirlerinin cevaplarını görüp eleştirir, sonunda tarafsız bir sentezci ortak cevabı yazar.
 
 ![AI Comparator masaüstü görünümü](docs/screenshots/ai-comparator-desktop.png)
 
@@ -22,6 +25,10 @@ Kullanıcı beğendiği AI cevabını aktif dal olarak seçebilir. Sonraki mesaj
 - Responsive masaüstü, tablet ve mobil arayüz
 - API anahtarlarının yalnızca backend ortamında tutulması
 - Backend ve frontend timeout koruması
+- Münazara modu: seçilen sağlayıcıların bir konuyu 1-5 tur boyunca tartışması
+- Her turda diğer AI cevaplarını bağlam alarak eleştiren çok turlu akış
+- Tartışma sonunda seçilen bir sentezcinin daha uzun ortak cevabı yazması
+- Münazaraların MySQL'de saklanıp geçmişten yeniden açılması
 
 ## Mimari
 
@@ -53,6 +60,22 @@ USER: Java nedir?
 ```
 
 Yeni isteğin context'i oluşturulurken kullanılmayan alternatif cevaplar dahil edilmez.
+
+### Münazara modu
+
+Kullanıcı bir konu, en az iki katılımcı sağlayıcı, tur sayısı (1-5) ve bir sentezci seçer. Akış tek bir SSE bağlantısı üzerinden parça parça yayınlanır:
+
+```mermaid
+flowchart TB
+    T["Konu + katılımcılar + tur sayısı + sentezci"] --> R1["Tur 1: her AI kendi görüşünü yazar"]
+    R1 --> R2["Sonraki turlar: her AI diğerlerinin cevaplarını eleştirir"]
+    R2 --> S["Sentez: seçilen sentezci tarafsız ortak cevabı yazar"]
+```
+
+- Her tur içinde katılımcılar paralel çalışır; sonraki turların promptuna önceki turların tam dökümü bağlam olarak eklenir.
+- Bir katılımcı hata verir veya boş dönerse yalnızca o katılımcı işaretlenir, tur devam eder. İlk tur tamamen boşsa münazara `FAILED` olarak kapatılır.
+- Sentez, sağlayıcının senteze özel (daha uzun) token bütçesiyle üretilir ve `final_answer` olarak saklanır.
+- Tamamlanan münazaralar geçmişten yeniden açılıp aynen izlenebilir.
 
 ## Teknolojiler
 
@@ -241,6 +264,9 @@ Frontend `http://localhost:5173`, backend `http://localhost:8080` adresinde çal
 | `GET` | `/api/conversations` | Konuşmaları listeler |
 | `GET` | `/api/conversations/{id}` | Konuşma mesajlarını getirir |
 | `POST` | `/api/conversations/{id}/active-message` | Aktif konuşma dalını seçer |
+| `POST` | `/api/debates/stream` | Münazarayı başlatır ve akışı Server-Sent Events ile döner |
+| `GET` | `/api/debates` | Münazaraları listeler |
+| `GET` | `/api/debates/{id}` | Münazara mesajlarını ve sentezi getirir |
 
 ### Karşılaştırma örneği
 
@@ -290,6 +316,37 @@ Bir sağlayıcı hata verirse diğer cevaplar korunur ve ilgili response içinde
 
 Üç sağlayıcının tamamı bitince (başarı/hata fark etmeksizin) bağlantı kapanır.
 
+### Münazara örneği
+
+İstek:
+
+```http
+POST /api/debates/stream
+Content-Type: application/json
+```
+
+```json
+{
+  "topic": "Uzaktan çalışma mı, ofis mi?",
+  "participants": ["OPENAI", "ANTHROPIC", "GEMINI"],
+  "rounds": 2,
+  "synthesizer": "OPENAI"
+}
+```
+
+`text/event-stream` formatında yayınlanan olaylar:
+
+| Olay | İçerik |
+| --- | --- |
+| `start` | `{ debateId }` |
+| `round-start` | `{ round }` — yeni tur başladı |
+| `token` | `{ round, provider, delta }` — metin parçası (`round: 0` sentez akışıdır) |
+| `participant-done` | `{ round, provider, messageId, content }` — katılımcı turu tamamladı |
+| `participant-error` | `{ round, provider, message }` — katılımcı hata verdi veya boş döndü |
+| `round-done` | `{ round }` — tur tamamlandı |
+| `synthesis-done` | `{ provider, messageId, content }` — sentezci ortak cevabı yazdı |
+| `done` | `{ debateId, status }` — münazara `COMPLETED` veya `FAILED` |
+
 ## Test ve kalite kontrolleri
 
 Backend testleri:
@@ -316,6 +373,9 @@ Mevcut backend test paketi şunları kapsar:
 - Sağlayıcı hata izolasyonu
 - Timeout davranışı
 - Başarısız cevabı yeniden deneme ve kaydetme
+- Münazara turları, eleştiri ve sentez orkestrasyonu
+- Münazara kalıcılığı ve durum yönetimi
+- Münazara prompt üretimi
 
 ## Güvenlik
 
@@ -337,6 +397,6 @@ Mevcut backend test paketi şunları kapsar:
 
 ## Proje durumu
 
-İlk MVP tamamlanmıştır. Uygulama üç AI servisinden cevap alabilir, cevapları karşılaştırabilir, seçilen cevap üzerinden dallanarak devam edebilir ve konuşma geçmişini MySQL'de kalıcı olarak saklayabilir.
+İlk MVP tamamlanmıştır. Uygulama üç AI servisinden cevap alabilir, cevapları karşılaştırabilir, seçilen cevap üzerinden dallanarak devam edebilir ve konuşma geçmişini MySQL'de kalıcı olarak saklayabilir. Ayrıca münazara modu ile sağlayıcılar bir konuyu turlar boyunca tartışıp bir sentezci üzerinden ortak cevaba varabilir; münazaralar da kalıcı olarak saklanır.
 
 Bu proje bir staj çalışması kapsamında full-stack geliştirme, REST API tasarımı, veritabanı modelleme ve yapay zekâ servis entegrasyonlarını öğrenmek amacıyla geliştirilmiştir.
