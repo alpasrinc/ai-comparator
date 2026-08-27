@@ -189,3 +189,87 @@ export function retryProvider(conversationId, userMessageId, provider) {
     }),
   })
 }
+
+export function getDebates() {
+  return request('/api/debates')
+}
+
+export function getDebate(debateId) {
+  return request(`/api/debates/${debateId}`)
+}
+
+export async function startDebateStream(debateRequest, handlers) {
+  const controller = new AbortController()
+  let idleTimeoutId = null
+
+  const resetIdleTimeout = () => {
+    window.clearTimeout(idleTimeoutId)
+    idleTimeoutId = window.setTimeout(
+      () => controller.abort(),
+      STREAM_IDLE_TIMEOUT_MS,
+    )
+  }
+
+  resetIdleTimeout()
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/debates/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(debateRequest),
+      signal: controller.signal,
+    })
+
+    if (!response.ok || !response.body) {
+      const errorBody = await response.json().catch(() => null)
+      const errorMessage =
+        errorBody?.detail ??
+        errorBody?.message ??
+        `İstek başarısız oldu: HTTP ${response.status}`
+
+      throw new Error(errorMessage)
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { value, done } = await reader.read()
+
+      if (done) {
+        break
+      }
+
+      resetIdleTimeout()
+      buffer += decoder.decode(value, { stream: true })
+
+      const rawEvents = buffer.split('\n\n')
+      buffer = rawEvents.pop() ?? ''
+
+      for (const rawEvent of rawEvents) {
+        const event = parseSseEvent(rawEvent)
+
+        if (event) {
+          handlers[event.name]?.(event.data)
+        }
+      }
+    }
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw new Error('İstek zaman aşımına uğradı. Tekrar deneyin.', {
+        cause: error,
+      })
+    }
+
+    if (error instanceof TypeError) {
+      throw new Error('Backend bağlantısı kurulamadı.', { cause: error })
+    }
+
+    throw error
+  } finally {
+    window.clearTimeout(idleTimeoutId)
+  }
+}
