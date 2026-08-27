@@ -13,7 +13,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -36,12 +35,14 @@ public class AiComparisonService {
     private final List<AiProvider> providers;
     private final ExecutorService aiExecutor;
     private final ConversationService conversationService;
+    private final SseSupport sseSupport;
     private final long requestTimeoutSeconds;
 
     public AiComparisonService(
             List<AiProvider> providers,
             ExecutorService aiExecutor,
             ConversationService conversationService,
+            SseSupport sseSupport,
             @Value("${ai.request-timeout-seconds:30}")
             long requestTimeoutSeconds
     ) {
@@ -50,6 +51,7 @@ public class AiComparisonService {
                 .toList();
         this.aiExecutor = aiExecutor;
         this.conversationService = conversationService;
+        this.sseSupport = sseSupport;
         this.requestTimeoutSeconds = requestTimeoutSeconds;
     }
 
@@ -141,7 +143,7 @@ public class AiComparisonService {
         emitter.onTimeout(emitter::complete);
         emitter.onError(throwable -> { });
 
-        sendEvent(
+        sseSupport.send(
                 emitter,
                 emitterLock,
                 "start",
@@ -178,7 +180,7 @@ public class AiComparisonService {
                 .runAsync(
                         () -> provider.streamMessage(prompt, delta -> {
                             accumulated.append(delta);
-                            sendEvent(
+                            sseSupport.send(
                                     emitter,
                                     emitterLock,
                                     "token",
@@ -198,7 +200,7 @@ public class AiComparisonService {
                                     providerName
                             );
 
-                            sendEvent(
+                            sseSupport.send(
                                     emitter,
                                     emitterLock,
                                     "error",
@@ -214,7 +216,7 @@ public class AiComparisonService {
                                     AiResponse.success(null, providerName, content)
                             );
 
-                            sendEvent(
+                            sseSupport.send(
                                     emitter,
                                     emitterLock,
                                     "done",
@@ -241,7 +243,7 @@ public class AiComparisonService {
                                 cause
                         );
 
-                        sendEvent(
+                        sseSupport.send(
                                 emitter,
                                 emitterLock,
                                 "error",
@@ -255,29 +257,6 @@ public class AiComparisonService {
                         }
                     }
                 });
-    }
-
-    private void sendEvent(
-            SseEmitter emitter,
-            Object emitterLock,
-            String eventName,
-            Object data
-    ) {
-        synchronized (emitterLock) {
-            try {
-                emitter.send(
-                        SseEmitter.event()
-                                .name(eventName)
-                                .data(data, MediaType.APPLICATION_JSON)
-                );
-            } catch (Exception exception) {
-                log.debug(
-                        "SSE gönderimi başarısız (istemci muhtemelen "
-                                + "bağlantıyı kapattı): {}",
-                        exception.getMessage()
-                );
-            }
-        }
     }
 
     private AiProvider resolveProvider(AiProviderType providerType) {

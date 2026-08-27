@@ -65,6 +65,7 @@ class AiComparisonServiceTests {
                 List.of(openAi, anthropic, gemini),
                 executor,
                 conversationService,
+                new SseSupport(),
                 5
         );
 
@@ -105,6 +106,7 @@ class AiComparisonServiceTests {
                 List.of(slowProvider),
                 executor,
                 conversationService,
+                new SseSupport(),
                 0
         );
 
@@ -132,6 +134,7 @@ class AiComparisonServiceTests {
                 List.of(slowProvider),
                 executor,
                 conversationService,
+                new SseSupport(),
                 0
         );
 
@@ -155,6 +158,7 @@ class AiComparisonServiceTests {
                 List.of(failing),
                 executor,
                 conversationService,
+                new SseSupport(),
                 5
         );
 
@@ -200,6 +204,7 @@ class AiComparisonServiceTests {
                 List.of(streamingProvider),
                 executor,
                 conversationService,
+                new SseSupport(),
                 5
         );
 
@@ -233,6 +238,7 @@ class AiComparisonServiceTests {
                 List.of(provider),
                 executor,
                 conversationService,
+                new SseSupport(),
                 5
         );
 
