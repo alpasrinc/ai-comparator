@@ -27,6 +27,10 @@ async function request(path, options = {}) {
       throw new Error(message)
     }
 
+    if (response.status === 204) {
+      return null
+    }
+
     return response.json()
   } catch (error) {
     if (error.name === 'AbortError') {
@@ -49,7 +53,12 @@ export function getHealth() {
   return request('/api/health')
 }
 
-export function compareMessage(message, conversationId = null) {
+export function compareMessage(
+  message,
+  conversationId = null,
+  providers,
+  intensity,
+) {
   return request('/api/chat/compare', {
     method: 'POST',
     headers: {
@@ -58,6 +67,8 @@ export function compareMessage(message, conversationId = null) {
     body: JSON.stringify({
       conversationId,
       message,
+      providers,
+      intensity,
     }),
   })
 }
@@ -79,7 +90,13 @@ function parseSseEvent(rawEvent) {
   }
 }
 
-export async function streamCompareMessage(message, conversationId, handlers) {
+export async function streamCompareMessage(
+  message,
+  conversationId,
+  providers,
+  intensity,
+  handlers,
+) {
   const controller = new AbortController()
   let idleTimeoutId = null
 
@@ -99,7 +116,7 @@ export async function streamCompareMessage(message, conversationId, handlers) {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ conversationId, message }),
+      body: JSON.stringify({ conversationId, message, providers, intensity }),
       signal: controller.signal,
     })
 
@@ -176,6 +193,12 @@ export function getConversation(conversationId) {
   return request(`/api/conversations/${conversationId}`)
 }
 
+export function deleteConversation(conversationId) {
+  return request(`/api/conversations/${conversationId}`, {
+    method: 'DELETE',
+  })
+}
+
 export function retryProvider(conversationId, userMessageId, provider) {
   return request('/api/chat/retry', {
     method: 'POST',
@@ -196,6 +219,12 @@ export function getDebates() {
 
 export function getDebate(debateId) {
   return request(`/api/debates/${debateId}`)
+}
+
+export function deleteDebate(debateId) {
+  return request(`/api/debates/${debateId}`, {
+    method: 'DELETE',
+  })
 }
 
 export async function startDebateStream(debateRequest, handlers) {

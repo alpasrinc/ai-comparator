@@ -1,6 +1,11 @@
 import { useState } from 'react'
 
-function ChatInput({ onSend, disabled = false, isLoading = false }) {
+function ChatInput({
+  onSend,
+  disabled = false,
+  isLoading = false,
+  providerCount = 3,
+}) {
   const [message, setMessage] = useState('')
 
   const trimmedMessage = message.trim()
@@ -29,7 +34,7 @@ function ChatInput({ onSend, disabled = false, isLoading = false }) {
     <form className="chat-input" onSubmit={handleSubmit} noValidate>
       <div className="chat-input__heading">
         <label htmlFor="message">Mesajınız</label>
-        <span>Tek mesaj · 3 model</span>
+        <span>Tek mesaj · {providerCount} model</span>
       </div>
 
       <textarea
@@ -53,7 +58,13 @@ function ChatInput({ onSend, disabled = false, isLoading = false }) {
         </small>
 
         <button type="submit" disabled={cannotSend}>
-          <span>{isLoading ? 'Cevaplar bekleniyor...' : 'Gönder'}</span>
+          <span>
+            {isLoading
+              ? providerCount === 1
+                ? 'Cevap bekleniyor...'
+                : 'Cevaplar bekleniyor...'
+              : 'Gönder'}
+          </span>
           {!isLoading && <span aria-hidden="true">↗</span>}
         </button>
       </div>

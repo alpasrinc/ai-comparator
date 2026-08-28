@@ -11,6 +11,9 @@ function ConversationSidebar({
   isLoading,
   onSelect,
   onNewConversation,
+  onDelete,
+  deletingConversationId,
+  isBusy,
 }) {
   return (
     <aside className="conversation-sidebar">
@@ -52,25 +55,44 @@ function ConversationSidebar({
 
         {!isLoading &&
           conversations.map((conversation) => (
-            <button
-              key={conversation.id}
-              type="button"
-              className={`conversation-item ${
-                activeConversationId === conversation.id
-                  ? 'conversation-item--active'
-                  : ''
-              }`}
-              onClick={() => onSelect(conversation.id)}
-              title={conversation.title}
-            >
-              <span className="conversation-item__title">
-                {conversation.title}
-              </span>
+            <div className="conversation-list__row" key={conversation.id}>
+              <button
+                type="button"
+                className={`conversation-item ${
+                  activeConversationId === conversation.id
+                    ? 'conversation-item--active'
+                    : ''
+                }`}
+                onClick={() => onSelect(conversation.id)}
+                title={conversation.title}
+              >
+                <span className="conversation-item__title">
+                  {conversation.title}
+                </span>
 
-              <span className="conversation-item__date">
-                {formatDate(conversation.updatedAt)}
-              </span>
-            </button>
+                <span className="conversation-item__date">
+                  {formatDate(conversation.updatedAt)}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                className="history-delete-button"
+                onClick={() => onDelete(conversation)}
+                disabled={
+                  deletingConversationId === conversation.id ||
+                  (isBusy && activeConversationId === conversation.id)
+                }
+                aria-label={`${conversation.title} konuşmasını sil`}
+                title={
+                  isBusy && activeConversationId === conversation.id
+                    ? 'Yanıt üretilirken konuşma silinemez'
+                    : 'Konuşmayı sil'
+                }
+              >
+                {deletingConversationId === conversation.id ? '…' : 'Sil'}
+              </button>
+            </div>
           ))}
       </nav>
     </aside>

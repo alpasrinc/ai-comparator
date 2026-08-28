@@ -2,8 +2,11 @@ import { useEffect, useState } from 'react'
 import AiPanel from './AiPanel'
 import BranchTreePanel from './BranchTreePanel'
 import ChatInput from './ChatInput'
+import CompareProviderSelector from './CompareProviderSelector'
 import ConversationSidebar from './ConversationSidebar'
+import IntensitySelector from './IntensitySelector'
 import {
+  deleteConversation,
   getConversation,
   getConversations,
   retryProvider,
@@ -30,6 +33,9 @@ function CompareView({ backendStatus, backendError }) {
   const [selectionError, setSelectionError] = useState('')
   const [retryingProvider, setRetryingProvider] = useState('')
   const [conversationMessages, setConversationMessages] = useState([])
+  const [deletingConversationId, setDeletingConversationId] = useState(null)
+  const [selectedProviders, setSelectedProviders] = useState(PROVIDERS)
+  const [intensity, setIntensity] = useState('MEDIUM')
 
   useEffect(() => {
     getConversations()
@@ -93,6 +99,7 @@ function CompareView({ backendStatus, backendError }) {
               messageId: message.id,
               provider: message.provider,
               content: message.content,
+              usage: message.usage,
             }))
         : []
 
@@ -104,6 +111,11 @@ function CompareView({ backendStatus, backendError }) {
       setUserMessageId(latestUserMessage?.id ?? null)
       setSubmittedMessage(latestUserMessage?.content ?? '')
       setResponses(latestResponses)
+      setSelectedProviders(
+        latestResponses.length > 0
+          ? latestResponses.map((response) => response.provider)
+          : PROVIDERS,
+      )
       setSelectedMessageId(conversation.activeMessageId)
       setSelectedProvider(activeMessage?.provider ?? '')
       setConversationMessages(conversation.messages)
@@ -125,12 +137,55 @@ function CompareView({ backendStatus, backendError }) {
     setSelectionError('')
     setHistoryError('')
     setConversationMessages([])
+    setSelectedProviders(PROVIDERS)
+  }
+
+  function handleToggleProvider(provider) {
+    setSelectedProviders((current) => {
+      if (current.includes(provider)) {
+        return current.length === 1
+          ? current
+          : current.filter((item) => item !== provider)
+      }
+
+      return PROVIDERS.filter(
+        (item) => current.includes(item) || item === provider,
+      )
+    })
+  }
+
+  async function handleDeleteConversation(conversation) {
+    const confirmed = window.confirm(
+      `“${conversation.title}” konuşması kalıcı olarak silinsin mi?`,
+    )
+
+    if (!confirmed) {
+      return
+    }
+
+    setDeletingConversationId(conversation.id)
+    setHistoryError('')
+
+    try {
+      await deleteConversation(conversation.id)
+      setConversations((current) =>
+        current.filter((item) => item.id !== conversation.id),
+      )
+
+      if (conversationId === conversation.id) {
+        handleNewConversation()
+      }
+    } catch (requestError) {
+      setHistoryError(`Konuşma silinemedi: ${requestError.message}`)
+    } finally {
+      setDeletingConversationId(null)
+    }
   }
 
   async function handleSend(message) {
     setSubmittedMessage(message)
     setResponses(
-      PROVIDERS.map((provider) => ({
+      selectedProviders.map((provider) => ({
         provider,
         content: '',
         messageId: null,
@@ -145,9 +200,15 @@ function CompareView({ backendStatus, backendError }) {
     setIsLoading(true)
 
     let resolvedConversationId = conversationId
+    let completedSingleResponse = null
 
     try {
-      await streamCompareMessage(message, conversationId, {
+      await streamCompareMessage(
+        message,
+        conversationId,
+        selectedProviders,
+        intensity,
+        {
         start: (payload) => {
           resolvedConversationId = payload.conversationId
           setConversationId(payload.conversationId)
@@ -162,11 +223,15 @@ function CompareView({ backendStatus, backendError }) {
             ),
           )
         },
-        done: ({ provider, messageId, content }) => {
+        done: ({ provider, messageId, content, usage }) => {
+          if (selectedProviders.length === 1) {
+            completedSingleResponse = { provider, messageId, content }
+          }
+
           setResponses((current) =>
             current.map((response) =>
               response.provider === provider
-                ? { ...response, messageId, content, streaming: false }
+                ? { ...response, messageId, content, usage, streaming: false }
                 : response,
             ),
           )
@@ -180,7 +245,21 @@ function CompareView({ backendStatus, backendError }) {
             ),
           )
         },
-      })
+        },
+      )
+
+      if (completedSingleResponse?.messageId) {
+        try {
+          const result = await selectActiveMessage(
+            resolvedConversationId,
+            completedSingleResponse.messageId,
+          )
+          setSelectedMessageId(result.activeMessageId)
+          setSelectedProvider(result.provider)
+        } catch (requestError) {
+          setSelectionError(requestError.message)
+        }
+      }
 
       await refreshConversations()
       await refreshConversationDetail(resolvedConversationId)
@@ -221,6 +300,15 @@ function CompareView({ backendStatus, backendError }) {
       )
 
       if (!retriedResponse.error) {
+        if (selectedProviders.length === 1 && retriedResponse.messageId) {
+          const result = await selectActiveMessage(
+            conversationId,
+            retriedResponse.messageId,
+          )
+          setSelectedMessageId(result.activeMessageId)
+          setSelectedProvider(result.provider)
+        }
+
         await refreshConversations()
         await refreshConversationDetail(conversationId)
       }
@@ -286,6 +374,9 @@ function CompareView({ backendStatus, backendError }) {
         isLoading={isLoadingConversations}
         onSelect={handleOpenConversation}
         onNewConversation={handleNewConversation}
+        onDelete={handleDeleteConversation}
+        deletingConversationId={deletingConversationId}
+        isBusy={isLoading}
       />
 
       <main className="app">
@@ -317,7 +408,7 @@ function CompareView({ backendStatus, backendError }) {
 
         {historyError && (
           <div className="selection-notice selection-notice--error">
-            Geçmiş yüklenemedi: {historyError}
+            {historyError}
           </div>
         )}
 
@@ -333,6 +424,31 @@ function CompareView({ backendStatus, backendError }) {
             <p>{submittedMessage}</p>
           </div>
         )}
+
+        <div className="compare-controls">
+          <CompareProviderSelector
+            providers={PROVIDERS}
+            selected={selectedProviders}
+            onToggle={handleToggleProvider}
+            disabled={
+              isLoading ||
+              isOpeningConversation ||
+              selectingMessageId !== null ||
+              retryingProvider !== ''
+            }
+          />
+
+          <IntensitySelector
+            value={intensity}
+            onChange={setIntensity}
+            disabled={
+              isLoading ||
+              isOpeningConversation ||
+              selectingMessageId !== null ||
+              retryingProvider !== ''
+            }
+          />
+        </div>
 
         {mustSelectResponse && !isLoading && (
           <div className="selection-notice">
@@ -358,8 +474,11 @@ function CompareView({ backendStatus, backendError }) {
           activeMessageId={selectedMessageId}
         />
 
-        <section className="ai-grid" aria-label="Yapay zekâ cevapları">
-          {PROVIDERS.map((provider) => {
+        <section
+          className={`ai-grid ai-grid--${selectedProviders.length}`}
+          aria-label="Yapay zekâ cevapları"
+        >
+          {selectedProviders.map((provider) => {
             const providerResponse = responses.find(
               (response) => response.provider === provider,
             )
@@ -389,6 +508,7 @@ function CompareView({ backendStatus, backendError }) {
           onSend={handleSend}
           disabled={inputDisabled}
           isLoading={isLoading}
+          providerCount={selectedProviders.length}
         />
       </main>
     </div>

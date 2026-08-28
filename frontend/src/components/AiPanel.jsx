@@ -1,6 +1,7 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
+import TokenUsageBadge from './TokenUsageBadge'
 
 const PROVIDER_LABELS = {
   OPENAI: 'ChatGPT',
@@ -113,6 +114,10 @@ function AiPanel({
               <span className="ai-panel__cursor" aria-hidden="true" />
             )}
           </div>
+        )}
+
+        {!waiting && !panelError && content && !isStreaming && (
+          <TokenUsageBadge usage={response?.usage} />
         )}
 
         {!waiting && !panelError && !content && (
