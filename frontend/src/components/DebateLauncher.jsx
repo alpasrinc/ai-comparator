@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import IntensitySelector from './IntensitySelector'
 import { PROVIDERS, buildDebateRequest, validateDebateForm } from '../utils/debate'
 
 const PROVIDER_DETAILS = {
@@ -12,6 +13,7 @@ function DebateLauncher({ onStart, disabled }) {
   const [participants, setParticipants] = useState(PROVIDERS)
   const [rounds, setRounds] = useState(2)
   const [synthesizer, setSynthesizer] = useState('OPENAI')
+  const [intensity, setIntensity] = useState('MEDIUM')
   const [error, setError] = useState('')
 
   function toggleParticipant(provider) {
@@ -33,7 +35,13 @@ function DebateLauncher({ onStart, disabled }) {
 
     setError('')
     onStart(
-      buildDebateRequest({ topic, participants, rounds, synthesizer }),
+      buildDebateRequest({
+        topic,
+        participants,
+        rounds,
+        synthesizer,
+        intensity,
+      }),
     )
   }
 
@@ -131,6 +139,10 @@ function DebateLauncher({ onStart, disabled }) {
             </select>
           </span>
         </label>
+      </div>
+
+      <div className="debate-launcher__intensity">
+        <IntensitySelector value={intensity} onChange={setIntensity} />
       </div>
 
       {error && <p className="debate-launcher__error">{error}</p>}

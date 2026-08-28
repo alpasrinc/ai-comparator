@@ -2,7 +2,12 @@ import { useEffect, useState } from 'react'
 import DebateHistory from './DebateHistory'
 import DebateLauncher from './DebateLauncher'
 import DebateTranscript from './DebateTranscript'
-import { getDebate, getDebates, startDebateStream } from '../services/api'
+import {
+  deleteDebate,
+  getDebate,
+  getDebates,
+  startDebateStream,
+} from '../services/api'
 import { createRoundEntries, normalizeDebateDetail } from '../utils/debate'
 
 function DebateView() {
@@ -14,6 +19,8 @@ function DebateView() {
   const [synthesis, setSynthesis] = useState(null)
   const [isRunning, setIsRunning] = useState(false)
   const [error, setError] = useState('')
+  const [deletingDebateId, setDeletingDebateId] = useState(null)
+  const [historyCollapsed, setHistoryCollapsed] = useState(false)
 
   useEffect(() => {
     getDebates()
@@ -76,10 +83,11 @@ function DebateView() {
             content: entry.content + delta,
           }))
         },
-        'participant-done': ({ round, provider, content }) => {
+        'participant-done': ({ round, provider, content, usage }) => {
           upsertEntry(round, provider, (entry) => ({
             ...entry,
             content,
+            usage,
             streaming: false,
           }))
         },
@@ -94,8 +102,8 @@ function DebateView() {
             streaming: false,
           }))
         },
-        'synthesis-done': ({ content }) => {
-          setSynthesis({ content, streaming: false, error: null })
+        'synthesis-done': ({ content, usage }) => {
+          setSynthesis({ content, streaming: false, error: null, usage })
         },
         done: () => {
           setIsRunning(false)
@@ -124,15 +132,65 @@ function DebateView() {
     }
   }
 
+  async function handleDeleteDebate(debate) {
+    const confirmed = window.confirm(
+      `“${debate.topic}” münazarası kalıcı olarak silinsin mi?`,
+    )
+
+    if (!confirmed) {
+      return
+    }
+
+    setDeletingDebateId(debate.id)
+    setError('')
+
+    try {
+      await deleteDebate(debate.id)
+      setDebates((current) =>
+        current.filter((item) => item.id !== debate.id),
+      )
+
+      if (activeDebateId === debate.id) {
+        setActiveDebateId(null)
+        setTopic('')
+        setRounds([])
+        setSynthesis(null)
+      }
+    } catch (requestError) {
+      setError(`Münazara silinemedi: ${requestError.message}`)
+    } finally {
+      setDeletingDebateId(null)
+    }
+  }
+
+  function handleNewDebate() {
+    setActiveDebateId(null)
+    setTopic('')
+    setRounds([])
+    setSynthesis(null)
+    setError('')
+  }
+
   const hasContent = rounds.length > 0 || synthesis
+  const showLauncher = !activeDebateId && !isRunning
 
   return (
-    <div className="app-layout">
+    <div
+      className={`app-layout app-layout--debate${
+        historyCollapsed ? ' app-layout--collapsed' : ''
+      }`}
+    >
       <DebateHistory
         debates={debates}
         isLoading={isLoadingHistory}
         activeDebateId={activeDebateId}
         onSelect={handleOpenDebate}
+        onNewDebate={handleNewDebate}
+        onDelete={handleDeleteDebate}
+        deletingDebateId={deletingDebateId}
+        isRunning={isRunning}
+        collapsed={historyCollapsed}
+        onToggleCollapse={() => setHistoryCollapsed((value) => !value)}
       />
       <main className="app">
         <header className="app__header">
@@ -152,7 +210,9 @@ function DebateView() {
           </div>
         )}
 
-        <DebateLauncher onStart={handleStart} disabled={isRunning} />
+        {showLauncher && (
+          <DebateLauncher onStart={handleStart} disabled={isRunning} />
+        )}
 
         {hasContent && (
           <DebateTranscript

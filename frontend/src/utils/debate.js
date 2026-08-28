@@ -15,6 +15,7 @@ export function buildDebateRequest({
   participants,
   rounds,
   synthesizer,
+  intensity,
 }) {
   return {
     topic: topic.trim(),
@@ -24,6 +25,7 @@ export function buildDebateRequest({
     ),
     rounds,
     synthesizer,
+    intensity,
   }
 }
 
@@ -33,6 +35,7 @@ export function createRoundEntries(participants) {
     content: '',
     error: null,
     streaming: true,
+    usage: null,
   }))
 }
 
@@ -48,6 +51,7 @@ export function normalizeDebateDetail(detail) {
         content: message.content,
         error: null,
         streaming: false,
+        usage: message.usage ?? null,
       })
       byRound.set(message.roundNumber, list)
     })
@@ -56,8 +60,17 @@ export function normalizeDebateDetail(detail) {
     .sort((a, b) => a - b)
     .map((round) => ({ round, entries: byRound.get(round) }))
 
+  const synthesisMessage = [...(detail.messages ?? [])]
+    .reverse()
+    .find((message) => message.role === 'SYNTHESIS')
+
   const synthesis = detail.finalAnswer
-    ? { content: detail.finalAnswer, streaming: false, error: null }
+    ? {
+        content: detail.finalAnswer,
+        streaming: false,
+        error: null,
+        usage: synthesisMessage?.usage ?? null,
+      }
     : null
 
   return { rounds, synthesis }
