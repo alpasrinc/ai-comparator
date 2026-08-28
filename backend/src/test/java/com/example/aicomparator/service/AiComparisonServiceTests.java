@@ -27,7 +27,9 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import com.example.aicomparator.ai.AiProvider;
 import com.example.aicomparator.dto.AiResponse;
+import com.example.aicomparator.dto.AiResult;
 import com.example.aicomparator.dto.CompareResponse;
+import com.example.aicomparator.dto.TokenUsage;
 import com.example.aicomparator.entity.AiProviderType;
 
 class AiComparisonServiceTests {
@@ -84,6 +86,48 @@ class AiComparisonServiceTests {
                 .filteredOn(response -> response.error() == null)
                 .extracting(response -> response.provider())
                 .containsExactly("OPENAI", "GEMINI");
+    }
+
+    @Test
+    void shouldCallOnlyRequestedProvider() {
+        AiProvider openAi = provider(AiProviderType.OPENAI, "OpenAI cevabı");
+        AiProvider anthropic = provider(
+                AiProviderType.ANTHROPIC,
+                "Claude cevabı"
+        );
+        AiProvider gemini = provider(AiProviderType.GEMINI, "Gemini cevabı");
+        ConversationService conversationService =
+                mock(ConversationService.class);
+
+        when(conversationService.saveComparison(eq("Merhaba"), anyList()))
+                .thenAnswer(invocation -> new CompareResponse(
+                        1L,
+                        2L,
+                        invocation.getArgument(1)
+                ));
+
+        AiComparisonService service = new AiComparisonService(
+                List.of(openAi, anthropic, gemini),
+                executor,
+                conversationService,
+                new SseSupport(),
+                5
+        );
+
+        CompareResponse result = service.compare(
+                null,
+                "Merhaba",
+                List.of(AiProviderType.OPENAI)
+        );
+
+        assertThat(result.responses())
+                .singleElement()
+                .satisfies(response ->
+                        assertThat(response.provider()).isEqualTo("OPENAI")
+                );
+        verify(openAi).sendMessage(eq("Merhaba"), any());
+        verify(anthropic, never()).sendMessage(anyString(), any());
+        verify(gemini, never()).sendMessage(anyString(), any());
     }
 
     @Test
@@ -226,7 +270,7 @@ class AiComparisonServiceTests {
         when(provider.getProviderType()).thenReturn(AiProviderType.ANTHROPIC);
         doThrow(new IllegalStateException("boom"))
                 .when(provider)
-                .streamMessage(anyString(), any());
+                .streamMessage(anyString(), any(), any());
 
         ConversationService conversationService =
                 mock(ConversationService.class);
@@ -257,14 +301,14 @@ class AiComparisonServiceTests {
         when(provider.getProviderType()).thenReturn(providerType);
 
         doAnswer(invocation -> {
-            Consumer<String> onToken = invocation.getArgument(1);
+            Consumer<String> onToken = invocation.getArgument(2);
 
             for (String chunk : chunks) {
                 onToken.accept(chunk);
             }
 
-            return null;
-        }).when(provider).streamMessage(anyString(), any());
+            return TokenUsage.EMPTY;
+        }).when(provider).streamMessage(anyString(), any(), any());
 
         return provider;
     }
@@ -275,14 +319,15 @@ class AiComparisonServiceTests {
     ) {
         AiProvider provider = mock(AiProvider.class);
         when(provider.getProviderType()).thenReturn(providerType);
-        when(provider.sendMessage("Merhaba")).thenReturn(response);
+        when(provider.sendMessage(eq("Merhaba"), any()))
+                .thenReturn(new AiResult(response, TokenUsage.EMPTY));
         return provider;
     }
 
     private AiProvider failingProvider(AiProviderType providerType) {
         AiProvider provider = mock(AiProvider.class);
         when(provider.getProviderType()).thenReturn(providerType);
-        when(provider.sendMessage("Merhaba"))
+        when(provider.sendMessage(eq("Merhaba"), any()))
                 .thenThrow(new IllegalStateException("API unavailable"));
         return provider;
     }

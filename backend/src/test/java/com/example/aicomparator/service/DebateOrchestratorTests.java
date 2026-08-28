@@ -18,6 +18,8 @@ import org.mockito.ArgumentCaptor;
 
 import com.example.aicomparator.ai.AiProvider;
 import com.example.aicomparator.dto.DebateRequest;
+import com.example.aicomparator.dto.ResponseIntensity;
+import com.example.aicomparator.dto.TokenUsage;
 import com.example.aicomparator.entity.AiProviderType;
 
 class DebateOrchestratorTests {
@@ -38,9 +40,9 @@ class DebateOrchestratorTests {
         DebateService debateService = mock(DebateService.class);
         when(debateService.createDebate(any())).thenReturn(42L);
         when(debateService.saveParticipantMessage(
-                eq(42L), anyInt(), any(), any())).thenReturn(1L);
+                eq(42L), anyInt(), any(), any(), any())).thenReturn(1L);
         when(debateService.saveSynthesisMessage(
-                eq(42L), any(), any())).thenReturn(99L);
+                eq(42L), any(), any(), any())).thenReturn(99L);
 
         DebateOrchestrator orchestrator = new DebateOrchestrator(
                 List.of(openAi, gemini),
@@ -56,7 +58,8 @@ class DebateOrchestratorTests {
                 "Konu",
                 List.of(AiProviderType.OPENAI, AiProviderType.GEMINI),
                 2,
-                AiProviderType.OPENAI
+                AiProviderType.OPENAI,
+                ResponseIntensity.MEDIUM
         );
 
         var emitter =
@@ -70,19 +73,20 @@ class DebateOrchestratorTests {
         org.mockito.Mockito.verify(debateService,
                         org.mockito.Mockito.times(4))
                 .saveParticipantMessage(eq(42L), roundCaptor.capture(),
-                        any(), any());
+                        any(), any(), any());
         assertThat(roundCaptor.getAllValues()).contains(1, 2);
 
         org.mockito.Mockito.verify(debateService)
-                .saveSynthesisMessage(eq(42L), eq(AiProviderType.OPENAI), any());
+                .saveSynthesisMessage(eq(42L), eq(AiProviderType.OPENAI),
+                        any(), any());
         org.mockito.Mockito.verify(openAi, org.mockito.Mockito.times(2))
-                .streamMessage(any(), any());
+                .streamMessage(any(), any(), any());
         org.mockito.Mockito.verify(openAi)
-                .streamSynthesisMessage(any(), any());
+                .streamSynthesisMessage(any(), any(), any());
         org.mockito.Mockito.verify(gemini, org.mockito.Mockito.times(2))
-                .streamMessage(any(), any());
+                .streamMessage(any(), any(), any());
         org.mockito.Mockito.verify(gemini, org.mockito.Mockito.never())
-                .streamSynthesisMessage(any(), any());
+                .streamSynthesisMessage(any(), any(), any());
     }
 
     @Test
@@ -107,7 +111,8 @@ class DebateOrchestratorTests {
                 "Konu",
                 List.of(AiProviderType.OPENAI, AiProviderType.GEMINI),
                 2,
-                AiProviderType.OPENAI
+                AiProviderType.OPENAI,
+                ResponseIntensity.MEDIUM
         );
 
         var emitter =
@@ -119,7 +124,7 @@ class DebateOrchestratorTests {
         org.mockito.Mockito.verify(debateService).markFailed(7L);
         org.mockito.Mockito.verify(debateService,
                         org.mockito.Mockito.never())
-                .saveSynthesisMessage(any(), any(), any());
+                .saveSynthesisMessage(any(), any(), any(), any());
     }
 
     private AiProvider streamingProvider(
@@ -129,15 +134,15 @@ class DebateOrchestratorTests {
         AiProvider provider = mock(AiProvider.class);
         when(provider.getProviderType()).thenReturn(type);
         org.mockito.Mockito.doAnswer(invocation -> {
-            Consumer<String> onToken = invocation.getArgument(1);
+            Consumer<String> onToken = invocation.getArgument(2);
             onToken.accept(chunk);
-            return null;
-        }).when(provider).streamMessage(any(), any());
+            return TokenUsage.EMPTY;
+        }).when(provider).streamMessage(any(), any(), any());
         org.mockito.Mockito.doAnswer(invocation -> {
-            Consumer<String> onToken = invocation.getArgument(1);
+            Consumer<String> onToken = invocation.getArgument(2);
             onToken.accept(chunk);
-            return null;
-        }).when(provider).streamSynthesisMessage(any(), any());
+            return TokenUsage.EMPTY;
+        }).when(provider).streamSynthesisMessage(any(), any(), any());
         return provider;
     }
 
@@ -145,7 +150,7 @@ class DebateOrchestratorTests {
         AiProvider provider = mock(AiProvider.class);
         when(provider.getProviderType()).thenReturn(type);
         org.mockito.Mockito.doThrow(new IllegalStateException("boom"))
-                .when(provider).streamMessage(any(), any());
+                .when(provider).streamMessage(any(), any(), any());
         return provider;
     }
 }

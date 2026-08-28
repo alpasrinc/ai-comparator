@@ -352,4 +352,32 @@ void shouldSaveOnlySuccessfulResponsesAndAttachRetriedResponse() {
                     AiProviderType.GEMINI
             );
 }
+
+@Test
+void shouldDeleteConversationWithAllMessages() {
+    CompareResponse comparison = conversationService.saveComparison(
+            "Silinecek konuşma",
+            List.of(
+                    new AiResponse(null, "OPENAI", "OpenAI cevabı"),
+                    new AiResponse(null, "ANTHROPIC", "Claude cevabı"),
+                    new AiResponse(null, "GEMINI", "Gemini cevabı")
+            )
+    );
+
+    Long selectedMessageId = comparison.responses().get(0).messageId();
+    conversationService.selectActiveMessage(
+            comparison.conversationId(),
+            selectedMessageId
+    );
+
+    conversationService.deleteConversation(comparison.conversationId());
+
+    assertThat(conversationRepository.findById(comparison.conversationId()))
+            .isEmpty();
+    assertThat(messageRepository
+            .findByConversation_IdOrderByCreatedAtAsc(
+                    comparison.conversationId()
+            ))
+            .isEmpty();
+}
 }
