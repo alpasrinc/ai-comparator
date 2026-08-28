@@ -564,7 +564,11 @@
 .app-layout {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
+  grid-template-columns: 320px minmax(0, 1fr);
+}
+
+.app-layout--collapsed {
+  grid-template-columns: 60px minmax(0, 1fr);
 }
 
 .conversation-sidebar {
@@ -1721,15 +1725,7 @@
   margin-bottom: 8px;
 }
 
-/* Debate sidebar — mirrors the compare conversation sidebar */
-
-.app-layout--debate {
-  grid-template-columns: 320px minmax(0, 1fr);
-}
-
-.app-layout--debate.app-layout--collapsed {
-  grid-template-columns: 60px minmax(0, 1fr);
-}
+/* Collapsible sidebar shared by both tabs */
 
 .conversation-sidebar__actions {
   flex: 0 0 auto;
@@ -1799,8 +1795,7 @@
 }
 
 @media (max-width: 1100px) {
-  .app-layout--debate,
-  .app-layout--debate.app-layout--collapsed {
+  .app-layout--collapsed {
     grid-template-columns: 1fr;
   }
 }

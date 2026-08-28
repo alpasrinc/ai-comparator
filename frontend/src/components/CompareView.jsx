@@ -36,6 +36,7 @@ function CompareView({ backendStatus, backendError }) {
   const [deletingConversationId, setDeletingConversationId] = useState(null)
   const [selectedProviders, setSelectedProviders] = useState(PROVIDERS)
   const [intensity, setIntensity] = useState('MEDIUM')
+  const [historyCollapsed, setHistoryCollapsed] = useState(false)
 
   useEffect(() => {
     getConversations()
@@ -367,7 +368,11 @@ function CompareView({ backendStatus, backendError }) {
     mustSelectResponse
 
   return (
-    <div className="app-layout">
+    <div
+      className={`app-layout${
+        historyCollapsed ? ' app-layout--collapsed' : ''
+      }`}
+    >
       <ConversationSidebar
         conversations={conversations}
         activeConversationId={conversationId}
@@ -377,6 +382,8 @@ function CompareView({ backendStatus, backendError }) {
         onDelete={handleDeleteConversation}
         deletingConversationId={deletingConversationId}
         isBusy={isLoading}
+        collapsed={historyCollapsed}
+        onToggleCollapse={() => setHistoryCollapsed((value) => !value)}
       />
 
       <main className="app">

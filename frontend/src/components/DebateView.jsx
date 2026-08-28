@@ -176,7 +176,7 @@ function DebateView() {
 
   return (
     <div
-      className={`app-layout app-layout--debate${
+      className={`app-layout${
         historyCollapsed ? ' app-layout--collapsed' : ''
       }`}
     >

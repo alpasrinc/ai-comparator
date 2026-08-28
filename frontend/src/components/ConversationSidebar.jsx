@@ -14,9 +14,15 @@ function ConversationSidebar({
   onDelete,
   deletingConversationId,
   isBusy,
+  collapsed,
+  onToggleCollapse,
 }) {
   return (
-    <aside className="conversation-sidebar">
+    <aside
+      className={`conversation-sidebar${
+        collapsed ? ' conversation-sidebar--collapsed' : ''
+      }`}
+    >
       <div className="conversation-sidebar__header">
         <div className="conversation-sidebar__brand">
           <span className="conversation-sidebar__logo" aria-hidden="true">
@@ -28,13 +34,24 @@ function ConversationSidebar({
           </div>
         </div>
 
-        <button
-          type="button"
-          className="new-conversation-button"
-          onClick={onNewConversation}
-        >
-          + Yeni
-        </button>
+        <div className="conversation-sidebar__actions">
+          <button
+            type="button"
+            className="new-conversation-button"
+            onClick={onNewConversation}
+          >
+            + Yeni
+          </button>
+          <button
+            type="button"
+            className="sidebar-collapse-button"
+            onClick={onToggleCollapse}
+            aria-label={collapsed ? 'Paneli genişlet' : 'Paneli daralt'}
+            title={collapsed ? 'Paneli genişlet' : 'Paneli daralt'}
+          >
+            {collapsed ? '»' : '«'}
+          </button>
+        </div>
       </div>
 
       <nav
