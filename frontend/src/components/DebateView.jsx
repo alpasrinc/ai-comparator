@@ -195,7 +195,7 @@ function DebateView() {
       <main className="app">
         <header className="app__header">
           <div>
-            <p className="app__eyebrow">AI COMPARATOR</p>
+            <p className="app__eyebrow">AI DISCUSSION</p>
             <h1>Yapay zekâ münazarası</h1>
             <p className="app__description">
               Bir konu verin; yapay zekâlar tartışsın, tarafsız bir sentezci
