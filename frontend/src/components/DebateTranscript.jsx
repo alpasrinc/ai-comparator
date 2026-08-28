@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
@@ -16,6 +17,14 @@ const PROVIDER_MARKS = {
 }
 
 const PROVIDER_ORDER = ['OPENAI', 'ANTHROPIC', 'GEMINI']
+const AUTO_SCROLL_THRESHOLD = 80
+
+function isNearBottom(element) {
+  return (
+    element.scrollHeight - element.scrollTop - element.clientHeight <=
+    AUTO_SCROLL_THRESHOLD
+  )
+}
 
 function orderedProviders(rounds) {
   const present = new Set()
@@ -43,6 +52,79 @@ function columnStatus(turns) {
 
 function DebateTranscript({ topic, rounds, synthesis }) {
   const providers = orderedProviders(rounds)
+  const columnBodyRefs = useRef(new Map())
+  const columnAutoScroll = useRef(new Map())
+  const synthesisBodyRef = useRef(null)
+  const synthesisAutoScroll = useRef(true)
+  const transcriptEndRef = useRef(null)
+  const pageAutoScroll = useRef(true)
+
+  const streamingSignature = rounds
+    .flatMap((round) =>
+      round.entries.map(
+        (entry) =>
+          `${round.round}:${entry.provider}:${entry.content.length}:${entry.streaming}`,
+      ),
+    )
+    .concat(
+      synthesis
+        ? [`synthesis:${synthesis.content.length}:${synthesis.streaming}`]
+        : [],
+    )
+    .join('|')
+
+  useEffect(() => {
+    let previousScrollY = window.scrollY
+
+    function handlePageScroll() {
+      const currentScrollY = window.scrollY
+      const distanceFromBottom =
+        document.documentElement.scrollHeight -
+        currentScrollY -
+        window.innerHeight
+
+      if (currentScrollY < previousScrollY - 2) {
+        pageAutoScroll.current = false
+      } else if (distanceFromBottom <= AUTO_SCROLL_THRESHOLD) {
+        pageAutoScroll.current = true
+      }
+
+      previousScrollY = currentScrollY
+    }
+
+    window.addEventListener('scroll', handlePageScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handlePageScroll)
+  }, [])
+
+  useEffect(() => {
+    const frameId = window.requestAnimationFrame(() => {
+      providers.forEach((provider) => {
+        const body = columnBodyRefs.current.get(provider)
+        if (body && columnAutoScroll.current.get(provider) !== false) {
+          body.scrollTop = body.scrollHeight
+        }
+      })
+
+      if (synthesisBodyRef.current && synthesisAutoScroll.current) {
+        synthesisBodyRef.current.scrollTop =
+          synthesisBodyRef.current.scrollHeight
+      }
+
+      const isStreaming =
+        rounds.some((round) =>
+          round.entries.some((entry) => entry.streaming),
+        ) || synthesis?.streaming
+
+      if (isStreaming && pageAutoScroll.current) {
+        transcriptEndRef.current?.scrollIntoView({
+          block: 'end',
+          behavior: 'smooth',
+        })
+      }
+    })
+
+    return () => window.cancelAnimationFrame(frameId)
+  }, [providers, rounds, streamingSignature, synthesis])
 
   return (
     <div className="debate-transcript">
@@ -85,7 +167,22 @@ function DebateTranscript({ topic, rounds, synthesis }) {
                   </span>
                 </header>
 
-                <div className="debate-column__body">
+                <div
+                  className="debate-column__body"
+                  ref={(element) => {
+                    if (element) {
+                      columnBodyRefs.current.set(provider, element)
+                    } else {
+                      columnBodyRefs.current.delete(provider)
+                    }
+                  }}
+                  onScroll={(event) => {
+                    columnAutoScroll.current.set(
+                      provider,
+                      isNearBottom(event.currentTarget),
+                    )
+                  }}
+                >
                   {turns.map(({ round, entry }) => (
                     <div key={round} className="debate-turn">
                       <span className="debate-turn__label">
@@ -134,7 +231,13 @@ function DebateTranscript({ topic, rounds, synthesis }) {
               {synthesis.streaming ? 'Yazılıyor…' : 'Tamamlandı'}
             </span>
           </header>
-          <div className="debate-synthesis__body">
+          <div
+            className="debate-synthesis__body"
+            ref={synthesisBodyRef}
+            onScroll={(event) => {
+              synthesisAutoScroll.current = isNearBottom(event.currentTarget)
+            }}
+          >
             {synthesis.error ? (
               <p className="debate-entry__error">{synthesis.error}</p>
             ) : (
@@ -150,6 +253,7 @@ function DebateTranscript({ topic, rounds, synthesis }) {
           </div>
         </section>
       )}
+      <div ref={transcriptEndRef} aria-hidden="true" />
     </div>
   )
 }
