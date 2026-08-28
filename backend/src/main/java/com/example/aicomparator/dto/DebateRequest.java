@@ -23,6 +23,8 @@ public record DebateRequest(
         int rounds,
 
         @NotNull(message = "Sentezci seçilmeli.")
-        AiProviderType synthesizer
+        AiProviderType synthesizer,
+
+        ResponseIntensity intensity
 ) {
 }

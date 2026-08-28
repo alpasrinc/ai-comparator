@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,6 +27,8 @@ import com.example.aicomparator.dto.DebateRoundStartEvent;
 import com.example.aicomparator.dto.DebateStartEvent;
 import com.example.aicomparator.dto.DebateSynthesisDoneEvent;
 import com.example.aicomparator.dto.DebateTokenEvent;
+import com.example.aicomparator.dto.ResponseIntensity;
+import com.example.aicomparator.dto.TokenUsage;
 import com.example.aicomparator.entity.AiProviderType;
 import com.example.aicomparator.entity.DebateStatus;
 
@@ -91,6 +94,8 @@ public class DebateOrchestrator {
             SseEmitter emitter,
             Object lock
     ) {
+        ResponseIntensity intensity =
+                ResponseIntensity.orDefault(request.intensity());
         try {
             List<Map<AiProviderType, String>> transcript = new ArrayList<>();
 
@@ -99,7 +104,8 @@ public class DebateOrchestrator {
                         new DebateRoundStartEvent(round));
 
                 Map<AiProviderType, String> roundResult = runRound(
-                        request, debateId, round, transcript, emitter, lock);
+                        request, debateId, round, transcript, intensity,
+                        emitter, lock);
                 transcript.add(roundResult);
 
                 sseSupport.send(emitter, lock, "round-done",
@@ -116,7 +122,8 @@ public class DebateOrchestrator {
                 }
             }
 
-            runSynthesis(request, debateId, transcript, emitter, lock);
+            runSynthesis(request, debateId, transcript, intensity,
+                    emitter, lock);
 
             sseSupport.send(emitter, lock, "done",
                     new DebateDoneEvent(debateId,
@@ -136,6 +143,7 @@ public class DebateOrchestrator {
             Long debateId,
             int round,
             List<Map<AiProviderType, String>> transcript,
+            ResponseIntensity intensity,
             SseEmitter emitter,
             Object lock
     ) {
@@ -150,7 +158,8 @@ public class DebateOrchestrator {
                             request.topic(), type, transcript);
 
             futures.add(streamParticipant(
-                    debateId, round, type, provider, prompt, emitter, lock));
+                    debateId, round, type, provider, prompt, intensity,
+                    emitter, lock));
         }
 
         Map<AiProviderType, String> result = new LinkedHashMap<>();
@@ -169,29 +178,35 @@ public class DebateOrchestrator {
                     AiProviderType type,
                     AiProvider provider,
                     String prompt,
+                    ResponseIntensity intensity,
                     SseEmitter emitter,
                     Object lock
             ) {
         String name = type.name();
+        AtomicReference<TokenUsage> usageRef =
+                new AtomicReference<>(TokenUsage.EMPTY);
 
         return CompletableFuture.supplyAsync(() -> {
                     StringBuilder accumulated = new StringBuilder();
-                    provider.streamMessage(prompt, delta -> {
-                        accumulated.append(delta);
-                        sseSupport.send(emitter, lock, "token",
-                                new DebateTokenEvent(round, name, delta));
-                    });
+                    TokenUsage usage = provider.streamMessage(
+                            prompt, intensity, delta -> {
+                                accumulated.append(delta);
+                                sseSupport.send(emitter, lock, "token",
+                                        new DebateTokenEvent(round, name, delta));
+                            });
+                    usageRef.set(usage);
                     return accumulated.toString();
                 }, aiExecutor)
                 .orTimeout(requestTimeoutSeconds, TimeUnit.SECONDS)
                 .handle((content, throwable) -> {
                     if (throwable == null && content != null
                             && !content.isBlank()) {
+                        TokenUsage usage = usageRef.get();
                         Long messageId = debateService.saveParticipantMessage(
-                                debateId, round, type, content);
+                                debateId, round, type, content, usage);
                         sseSupport.send(emitter, lock, "participant-done",
                                 new DebateParticipantDoneEvent(
-                                        round, name, messageId, content));
+                                        round, name, messageId, content, usage));
                         return Map.entry(type, content);
                     }
 
@@ -209,6 +224,7 @@ public class DebateOrchestrator {
             DebateRequest request,
             Long debateId,
             List<Map<AiProviderType, String>> transcript,
+            ResponseIntensity intensity,
             SseEmitter emitter,
             Object lock
     ) {
@@ -219,13 +235,16 @@ public class DebateOrchestrator {
                 request.topic(), transcript);
 
         StringBuilder accumulated = new StringBuilder();
+        AtomicReference<TokenUsage> usageRef =
+                new AtomicReference<>(TokenUsage.EMPTY);
         try {
             CompletableFuture.runAsync(() ->
-                    provider.streamSynthesisMessage(prompt, delta -> {
-                        accumulated.append(delta);
-                        sseSupport.send(emitter, lock, "token",
-                                new DebateTokenEvent(0, name, delta));
-                    }), aiExecutor)
+                    usageRef.set(provider.streamSynthesisMessage(
+                            prompt, intensity, delta -> {
+                                accumulated.append(delta);
+                                sseSupport.send(emitter, lock, "token",
+                                        new DebateTokenEvent(0, name, delta));
+                            })), aiExecutor)
                     .orTimeout(synthesisTimeoutSeconds, TimeUnit.SECONDS)
                     .join();
         } catch (Exception exception) {
@@ -241,10 +260,11 @@ public class DebateOrchestrator {
             return;
         }
 
+        TokenUsage usage = usageRef.get();
         Long messageId = debateService.saveSynthesisMessage(
-                debateId, synthType, content);
+                debateId, synthType, content, usage);
         sseSupport.send(emitter, lock, "synthesis-done",
-                new DebateSynthesisDoneEvent(name, messageId, content));
+                new DebateSynthesisDoneEvent(name, messageId, content, usage));
     }
 
     private AiProvider resolveProvider(AiProviderType type) {

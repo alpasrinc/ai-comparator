@@ -51,6 +51,12 @@ public class DebateMessage {
     @Column(nullable = false, columnDefinition = "LONGTEXT")
     private String content;
 
+    @Column(name = "input_tokens")
+    private Long inputTokens;
+
+    @Column(name = "output_tokens")
+    private Long outputTokens;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -62,41 +68,53 @@ public class DebateMessage {
         Integer roundNumber,
         AiProviderType provider,
         DebateMessageRole role,
-        String content
+        String content,
+        Long inputTokens,
+        Long outputTokens
     ) {
         this.debate = Objects.requireNonNull(debate);
         this.roundNumber = roundNumber;
         this.provider = Objects.requireNonNull(provider);
         this.role = Objects.requireNonNull(role);
         this.content = Objects.requireNonNull(content);
+        this.inputTokens = inputTokens;
+        this.outputTokens = outputTokens;
     }
 
     public static DebateMessage participant(
         Debate debate,
         int roundNumber,
         AiProviderType provider,
-        String content
+        String content,
+        Long inputTokens,
+        Long outputTokens
     ) {
         return new DebateMessage(
             debate,
             roundNumber,
             provider,
             DebateMessageRole.PARTICIPANT,
-            content
+            content,
+            inputTokens,
+            outputTokens
         );
     }
 
     public static DebateMessage synthesis(
         Debate debate,
         AiProviderType provider,
-        String content
+        String content,
+        Long inputTokens,
+        Long outputTokens
     ) {
         return new DebateMessage(
             debate,
             null,
             provider,
             DebateMessageRole.SYNTHESIS,
-            content
+            content,
+            inputTokens,
+            outputTokens
         );
     }
 
@@ -127,6 +145,14 @@ public class DebateMessage {
 
     public String getContent() {
         return content;
+    }
+
+    public Long getInputTokens() {
+        return inputTokens;
+    }
+
+    public Long getOutputTokens() {
+        return outputTokens;
     }
 
     public Instant getCreatedAt() {

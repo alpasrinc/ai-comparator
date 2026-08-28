@@ -47,6 +47,10 @@ public class Conversation {
         this.activeMessage = Objects.requireNonNull(message);
     }
 
+    public void clearActiveMessage() {
+        this.activeMessage = null;
+    }
+
     @PrePersist
     void onCreate() {
         Instant now = Instant.now();

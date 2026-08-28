@@ -40,7 +40,9 @@ public class ChatController {
     ) {
         return aiComparisonService.compare(
                 request.conversationId(),
-                request.message().trim()
+                request.message().trim(),
+                request.providers(),
+                request.intensity()
         );
     }
 
@@ -56,6 +58,8 @@ public class ChatController {
         aiComparisonService.streamCompare(
                 request.conversationId(),
                 request.message().trim(),
+                request.providers(),
+                request.intensity(),
                 emitter
         );
 

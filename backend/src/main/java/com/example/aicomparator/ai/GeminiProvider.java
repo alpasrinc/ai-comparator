@@ -6,6 +6,9 @@ import jakarta.annotation.PreDestroy;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import com.example.aicomparator.dto.AiResult;
+import com.example.aicomparator.dto.ResponseIntensity;
+import com.example.aicomparator.dto.TokenUsage;
 import com.example.aicomparator.entity.AiProviderType;
 import com.google.genai.Client;
 import com.google.genai.ResponseStream;
@@ -33,18 +36,22 @@ public class GeminiProvider implements AiProvider {
     }
 
     @Override
-public AiProviderType getProviderType() {
-    return AiProviderType.GEMINI;
-}
+    public AiProviderType getProviderType() {
+        return AiProviderType.GEMINI;
+    }
+
     @Override
-    public String sendMessage(String userMessage) {
+    public AiResult sendMessage(
+            String userMessage,
+            ResponseIntensity intensity
+    ) {
         GenerateContentConfig config = GenerateContentConfig.builder()
-                .maxOutputTokens(maxOutputTokens)
+                .maxOutputTokens((int) intensity.scaleTokens(maxOutputTokens))
                 .build();
 
         GenerateContentResponse response = client.models.generateContent(
                 model,
-                userMessage,
+                intensity.applyTo(userMessage),
                 config
         );
 
@@ -54,24 +61,32 @@ public AiProviderType getProviderType() {
             throw new IllegalStateException("Gemini boş bir cevap döndürdü.");
         }
 
-        return content;
+        return new AiResult(content, extractUsage(response));
     }
 
     @Override
-    public void streamMessage(String userMessage, Consumer<String> onToken) {
-        streamWithLimit(userMessage, onToken, maxOutputTokens);
-    }
-
-    @Override
-    public void streamSynthesisMessage(
+    public TokenUsage streamMessage(
             String userMessage,
+            ResponseIntensity intensity,
             Consumer<String> onToken
     ) {
-        streamWithLimit(userMessage, onToken, synthesisMaxOutputTokens);
+        return streamWithLimit(userMessage, intensity, onToken,
+                (int) intensity.scaleTokens(maxOutputTokens));
     }
 
-    private void streamWithLimit(
+    @Override
+    public TokenUsage streamSynthesisMessage(
             String userMessage,
+            ResponseIntensity intensity,
+            Consumer<String> onToken
+    ) {
+        return streamWithLimit(userMessage, intensity, onToken,
+                (int) intensity.scaleTokens(synthesisMaxOutputTokens));
+    }
+
+    private TokenUsage streamWithLimit(
+            String userMessage,
+            ResponseIntensity intensity,
             Consumer<String> onToken,
             int outputTokenLimit
     ) {
@@ -79,11 +94,13 @@ public AiProviderType getProviderType() {
                 .maxOutputTokens(outputTokenLimit)
                 .build();
 
+        TokenUsage usage = TokenUsage.EMPTY;
+
         try (
                 ResponseStream<GenerateContentResponse> stream =
                         client.models.generateContentStream(
                                 model,
-                                userMessage,
+                                intensity.applyTo(userMessage),
                                 config
                         )
         ) {
@@ -93,8 +110,23 @@ public AiProviderType getProviderType() {
                 if (text != null && !text.isEmpty()) {
                     onToken.accept(text);
                 }
+
+                TokenUsage chunkUsage = extractUsage(chunk);
+                if (chunkUsage.totalTokens() > 0) {
+                    usage = chunkUsage;
+                }
             }
         }
+
+        return usage;
+    }
+
+    private TokenUsage extractUsage(GenerateContentResponse response) {
+        return response.usageMetadata()
+                .map(meta -> new TokenUsage(
+                        meta.promptTokenCount().orElse(0),
+                        meta.candidatesTokenCount().orElse(0)))
+                .orElse(TokenUsage.EMPTY);
     }
 
     @PreDestroy

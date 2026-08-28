@@ -16,6 +16,7 @@ import com.example.aicomparator.dto.MessageHistoryResponse;
 import com.example.aicomparator.dto.ActiveMessageResponse;
 import com.example.aicomparator.dto.AiResponse;
 import com.example.aicomparator.dto.CompareResponse;
+import com.example.aicomparator.dto.TokenUsage;
 import com.example.aicomparator.entity.AiProviderType;
 import com.example.aicomparator.entity.Conversation;
 import com.example.aicomparator.entity.Message;
@@ -233,7 +234,9 @@ public class ConversationService {
                         conversation,
                         userMessage,
                         AiProviderType.valueOf(response.provider()),
-                        response.content()
+                        response.content(),
+                        response.usage().inputTokens(),
+                        response.usage().outputTokens()
                 ))
                 .toList();
 
@@ -255,7 +258,8 @@ public class ConversationService {
                     return AiResponse.success(
                             savedMessage.getId(),
                             savedMessage.getProvider().name(),
-                            savedMessage.getContent()
+                            savedMessage.getContent(),
+                            usageOf(savedMessage)
                     );
                 })
                 .toList();
@@ -315,14 +319,25 @@ public class ConversationService {
                         userMessage.getConversation(),
                         userMessage,
                         AiProviderType.valueOf(response.provider()),
-                        response.content()
+                        response.content(),
+                        response.usage().inputTokens(),
+                        response.usage().outputTokens()
                 )
         );
 
         return AiResponse.success(
                 savedMessage.getId(),
                 savedMessage.getProvider().name(),
-                savedMessage.getContent()
+                savedMessage.getContent(),
+                usageOf(savedMessage)
+        );
+    }
+
+    private static TokenUsage usageOf(Message message) {
+        return new TokenUsage(
+                message.getInputTokens() == null ? 0 : message.getInputTokens(),
+                message.getOutputTokens() == null
+                        ? 0 : message.getOutputTokens()
         );
     }
 
@@ -425,7 +440,7 @@ public List<ConversationSummaryResponse> getConversations() {
 }
 
 @Transactional(readOnly = true)
-public ConversationDetailResponse getConversation(Long conversationId) {
+    public ConversationDetailResponse getConversation(Long conversationId) {
     Conversation conversation = findConversation(conversationId);
 
     List<MessageHistoryResponse> messages = messageRepository
@@ -441,7 +456,8 @@ public ConversationDetailResponse getConversation(Long conversationId) {
                             ? null
                             : message.getProvider().name(),
                     message.getContent(),
-                    message.getCreatedAt()
+                    message.getCreatedAt(),
+                    usageOf(message)
             ))
             .toList();
 
@@ -455,5 +471,19 @@ public ConversationDetailResponse getConversation(Long conversationId) {
             conversation.getUpdatedAt(),
             messages
     );
+}
+
+@Transactional
+public void deleteConversation(Long conversationId) {
+    Conversation conversation = findConversation(conversationId);
+
+    if (conversation.getActiveMessage() != null) {
+        conversation.clearActiveMessage();
+        conversationRepository.saveAndFlush(conversation);
+    }
+
+    messageRepository.clearParentLinksByConversationId(conversationId);
+    messageRepository.deleteByConversationId(conversationId);
+    conversationRepository.delete(conversation);
 }
 }

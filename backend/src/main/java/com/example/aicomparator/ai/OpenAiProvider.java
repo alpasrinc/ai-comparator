@@ -1,7 +1,12 @@
 package com.example.aicomparator.ai;
 
 import java.util.function.Consumer;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
+
+import com.example.aicomparator.dto.AiResult;
+import com.example.aicomparator.dto.ResponseIntensity;
+import com.example.aicomparator.dto.TokenUsage;
 import com.example.aicomparator.entity.AiProviderType;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -34,16 +39,16 @@ public class OpenAiProvider implements AiProvider {
     }
 
     @Override
-public AiProviderType getProviderType() {
-    return AiProviderType.OPENAI;
-}
-    @Override
+    public AiProviderType getProviderType() {
+        return AiProviderType.OPENAI;
+    }
 
-    public String sendMessage(String message) {
+    @Override
+    public AiResult sendMessage(String message, ResponseIntensity intensity) {
         ResponseCreateParams params = ResponseCreateParams.builder()
                 .model(model)
-                .input(message)
-                .maxOutputTokens(maxOutputTokens)
+                .input(intensity.applyTo(message))
+                .maxOutputTokens(intensity.scaleTokens(maxOutputTokens))
                 .build();
 
         Response response = client.responses().create(params);
@@ -59,42 +64,63 @@ public AiProviderType getProviderType() {
             throw new IllegalStateException("OpenAI boş bir cevap döndürdü.");
         }
 
-        return content;
+        TokenUsage usage = response.usage()
+                .map(u -> new TokenUsage(u.inputTokens(), u.outputTokens()))
+                .orElse(TokenUsage.EMPTY);
+
+        return new AiResult(content, usage);
     }
 
     @Override
-    public void streamMessage(String userMessage, Consumer<String> onToken) {
-        streamWithLimit(userMessage, onToken, maxOutputTokens);
-    }
-
-    @Override
-    public void streamSynthesisMessage(
+    public TokenUsage streamMessage(
             String userMessage,
+            ResponseIntensity intensity,
             Consumer<String> onToken
     ) {
-        streamWithLimit(userMessage, onToken, synthesisMaxOutputTokens);
+        return streamWithLimit(userMessage, intensity, onToken,
+                intensity.scaleTokens(maxOutputTokens));
     }
 
-    private void streamWithLimit(
+    @Override
+    public TokenUsage streamSynthesisMessage(
             String userMessage,
+            ResponseIntensity intensity,
+            Consumer<String> onToken
+    ) {
+        return streamWithLimit(userMessage, intensity, onToken,
+                intensity.scaleTokens(synthesisMaxOutputTokens));
+    }
+
+    private TokenUsage streamWithLimit(
+            String userMessage,
+            ResponseIntensity intensity,
             Consumer<String> onToken,
             long outputTokenLimit
     ) {
         ResponseCreateParams params = ResponseCreateParams.builder()
                 .model(model)
-                .input(userMessage)
+                .input(intensity.applyTo(userMessage))
                 .maxOutputTokens(outputTokenLimit)
                 .build();
+
+        AtomicReference<TokenUsage> usage =
+                new AtomicReference<>(TokenUsage.EMPTY);
 
         try (
                 StreamResponse<ResponseStreamEvent> stream =
                         client.responses().createStreaming(params)
         ) {
-            stream.stream().forEach(event ->
-                    event.outputTextDelta().ifPresent(
-                            delta -> onToken.accept(delta.delta())
-                    )
-            );
+            stream.stream().forEach(event -> {
+                event.outputTextDelta().ifPresent(
+                        delta -> onToken.accept(delta.delta())
+                );
+                event.completed().ifPresent(done ->
+                        done.response().usage().ifPresent(u ->
+                                usage.set(new TokenUsage(
+                                        u.inputTokens(), u.outputTokens()))));
+            });
         }
+
+        return usage.get();
     }
 }

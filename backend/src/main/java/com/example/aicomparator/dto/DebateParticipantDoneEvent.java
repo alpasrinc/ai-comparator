@@ -4,6 +4,7 @@ public record DebateParticipantDoneEvent(
         int round,
         String provider,
         Long messageId,
-        String content
+        String content,
+        TokenUsage usage
 ) {
 }

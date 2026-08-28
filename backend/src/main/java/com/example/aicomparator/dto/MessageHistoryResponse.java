@@ -8,6 +8,7 @@ public record MessageHistoryResponse(
         String role,
         String provider,
         String content,
-        Instant createdAt
+        Instant createdAt,
+        TokenUsage usage
 ) {
 }

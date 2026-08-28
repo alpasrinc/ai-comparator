@@ -14,9 +14,11 @@ import com.example.aicomparator.dto.DebateDetailResponse;
 import com.example.aicomparator.dto.DebateMessageResponse;
 import com.example.aicomparator.dto.DebateRequest;
 import com.example.aicomparator.dto.DebateSummaryResponse;
+import com.example.aicomparator.dto.TokenUsage;
 import com.example.aicomparator.entity.AiProviderType;
 import com.example.aicomparator.entity.Debate;
 import com.example.aicomparator.entity.DebateMessage;
+import com.example.aicomparator.entity.DebateMessageRole;
 import com.example.aicomparator.repository.DebateMessageRepository;
 import com.example.aicomparator.repository.DebateRepository;
 
@@ -56,9 +58,22 @@ public class DebateService {
             AiProviderType provider,
             String content
     ) {
+        return saveParticipantMessage(
+                debateId, round, provider, content, TokenUsage.EMPTY);
+    }
+
+    @Transactional
+    public Long saveParticipantMessage(
+            Long debateId,
+            int round,
+            AiProviderType provider,
+            String content,
+            TokenUsage usage
+    ) {
         Debate debate = requireDebate(debateId);
         DebateMessage message = debateMessageRepository.save(
-                DebateMessage.participant(debate, round, provider, content)
+                DebateMessage.participant(debate, round, provider, content,
+                        usage.inputTokens(), usage.outputTokens())
         );
         return message.getId();
     }
@@ -69,11 +84,23 @@ public class DebateService {
             AiProviderType provider,
             String content
     ) {
+        return saveSynthesisMessage(
+                debateId, provider, content, TokenUsage.EMPTY);
+    }
+
+    @Transactional
+    public Long saveSynthesisMessage(
+            Long debateId,
+            AiProviderType provider,
+            String content,
+            TokenUsage usage
+    ) {
         Debate debate = requireDebate(debateId);
         DebateMessage message = debateMessageRepository.save(
-                DebateMessage.synthesis(debate, provider, content)
+                DebateMessage.synthesis(debate, provider, content,
+                        usage.inputTokens(), usage.outputTokens())
         );
-        debate.complete(content);
+        debate.complete();
         debateRepository.save(debate);
         return message.getId();
     }
@@ -109,18 +136,30 @@ public class DebateService {
     public DebateDetailResponse getDebate(Long debateId) {
         Debate debate = requireDebate(debateId);
 
-        List<DebateMessageResponse> messages =
-                debateMessageRepository
-                        .findByDebateIdOrderByIdAsc(debateId)
-                        .stream()
+        List<DebateMessage> storedMessages = debateMessageRepository
+                .findByDebateIdOrderByIdAsc(debateId);
+
+        List<DebateMessageResponse> messages = storedMessages.stream()
                         .map(message -> new DebateMessageResponse(
                                 message.getId(),
                                 message.getRoundNumber(),
                                 message.getProvider().name(),
                                 message.getRole().name(),
-                                message.getContent()
+                                message.getContent(),
+                                new TokenUsage(
+                                        message.getInputTokens() == null
+                                                ? 0 : message.getInputTokens(),
+                                        message.getOutputTokens() == null
+                                                ? 0 : message.getOutputTokens())
                         ))
-                        .toList();
+                .toList();
+
+        String finalAnswer = storedMessages.stream()
+                .filter(message ->
+                        message.getRole() == DebateMessageRole.SYNTHESIS)
+                .map(DebateMessage::getContent)
+                .reduce((previous, current) -> current)
+                .orElse(null);
 
         List<String> participants = debate.getParticipants().stream()
                 .map(AiProviderType::name)
@@ -133,9 +172,16 @@ public class DebateService {
                 participants,
                 debate.getSynthesizerProvider().name(),
                 debate.getStatus().name(),
-                debate.getFinalAnswer(),
+                finalAnswer,
                 messages
         );
+    }
+
+    @Transactional
+    public void deleteDebate(Long debateId) {
+        Debate debate = requireDebate(debateId);
+        debateMessageRepository.deleteByDebateId(debateId);
+        debateRepository.delete(debate);
     }
 
     private Debate requireDebate(Long debateId) {

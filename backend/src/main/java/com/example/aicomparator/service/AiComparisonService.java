@@ -19,7 +19,10 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import com.example.aicomparator.ai.AiProvider;
 import com.example.aicomparator.dto.AiResponse;
+import com.example.aicomparator.dto.AiResult;
 import com.example.aicomparator.dto.CompareResponse;
+import com.example.aicomparator.dto.ResponseIntensity;
+import com.example.aicomparator.dto.TokenUsage;
 import com.example.aicomparator.dto.StreamDoneEvent;
 import com.example.aicomparator.dto.StreamErrorEvent;
 import com.example.aicomparator.dto.StreamStartEvent;
@@ -59,8 +62,33 @@ public class AiComparisonService {
             Long conversationId,
             String userMessage
     ) {
+        return compare(conversationId, userMessage, null,
+                ResponseIntensity.MEDIUM);
+    }
+
+    public CompareResponse compare(
+            Long conversationId,
+            String userMessage,
+            List<AiProviderType> requestedProviderTypes
+    ) {
+        return compare(conversationId, userMessage, requestedProviderTypes,
+                ResponseIntensity.MEDIUM);
+    }
+
+    public CompareResponse compare(
+            Long conversationId,
+            String userMessage,
+            List<AiProviderType> requestedProviderTypes,
+            ResponseIntensity intensity
+    ) {
+        ResponseIntensity effectiveIntensity =
+                ResponseIntensity.orDefault(intensity);
+        List<AiProvider> selectedProviders = selectProviders(
+                requestedProviderTypes
+        );
+
         List<CompletableFuture<AiResponse>> responseFutures =
-                providers.stream()
+                selectedProviders.stream()
                         .map(provider -> requestProvider(
                                 provider,
                                 conversationId == null
@@ -69,7 +97,8 @@ public class AiComparisonService {
                                                 conversationId,
                                                 userMessage,
                                                 provider.getProviderType()
-                                        )
+                                        ),
+                                effectiveIntensity
                         ))
                         .toList();
 
@@ -104,7 +133,8 @@ public class AiComparisonService {
                 providerType
         );
 
-        AiResponse response = requestProvider(provider, prompt).join();
+        AiResponse response = requestProvider(
+                provider, prompt, ResponseIntensity.MEDIUM).join();
 
         if (response.error() != null) {
             return response;
@@ -121,9 +151,19 @@ public class AiComparisonService {
             AiProviderType providerType,
             String message
     ) {
+        return sendSingle(providerType, message, ResponseIntensity.MEDIUM);
+    }
+
+    public AiResponse sendSingle(
+            AiProviderType providerType,
+            String message,
+            ResponseIntensity intensity
+    ) {
         AiProvider provider = resolveProvider(providerType);
 
-        return requestProvider(provider, message).join();
+        return requestProvider(
+                provider, message, ResponseIntensity.orDefault(intensity)
+        ).join();
     }
 
     public void streamCompare(
@@ -131,6 +171,33 @@ public class AiComparisonService {
             String userMessage,
             SseEmitter emitter
     ) {
+        streamCompare(conversationId, userMessage, null,
+                ResponseIntensity.MEDIUM, emitter);
+    }
+
+    public void streamCompare(
+            Long conversationId,
+            String userMessage,
+            List<AiProviderType> requestedProviderTypes,
+            SseEmitter emitter
+    ) {
+        streamCompare(conversationId, userMessage, requestedProviderTypes,
+                ResponseIntensity.MEDIUM, emitter);
+    }
+
+    public void streamCompare(
+            Long conversationId,
+            String userMessage,
+            List<AiProviderType> requestedProviderTypes,
+            ResponseIntensity intensity,
+            SseEmitter emitter
+    ) {
+        ResponseIntensity effectiveIntensity =
+                ResponseIntensity.orDefault(intensity);
+        List<AiProvider> selectedProviders = selectProviders(
+                requestedProviderTypes
+        );
+
         ConversationService.UserTurnResult turn = conversationId == null
                 ? conversationService.startComparison(userMessage)
                 : conversationService.startContinuation(
@@ -150,9 +217,9 @@ public class AiComparisonService {
                 new StreamStartEvent(turn.conversationId(), turn.userMessageId())
         );
 
-        AtomicInteger remaining = new AtomicInteger(providers.size());
+        AtomicInteger remaining = new AtomicInteger(selectedProviders.size());
 
-        for (AiProvider provider : providers) {
+        for (AiProvider provider : selectedProviders) {
             String providerPrompt = conversationId == null
                     ? userMessage
                     : conversationService.buildActiveContextPrompt(
@@ -161,7 +228,8 @@ public class AiComparisonService {
                             provider.getProviderType()
                     );
 
-            streamProvider(provider, providerPrompt, turn, emitter, emitterLock, remaining);
+            streamProvider(provider, providerPrompt, turn, effectiveIntensity,
+                    emitter, emitterLock, remaining);
         }
     }
 
@@ -169,6 +237,7 @@ public class AiComparisonService {
             AiProvider provider,
             String prompt,
             ConversationService.UserTurnResult turn,
+            ResponseIntensity intensity,
             SseEmitter emitter,
             Object emitterLock,
             AtomicInteger remaining
@@ -177,8 +246,8 @@ public class AiComparisonService {
         StringBuilder accumulated = new StringBuilder();
 
         CompletableFuture
-                .runAsync(
-                        () -> provider.streamMessage(prompt, delta -> {
+                .supplyAsync(
+                        () -> provider.streamMessage(prompt, intensity, delta -> {
                             accumulated.append(delta);
                             sseSupport.send(
                                     emitter,
@@ -190,7 +259,7 @@ public class AiComparisonService {
                         aiExecutor
                 )
                 .orTimeout(requestTimeoutSeconds, TimeUnit.SECONDS)
-                .whenComplete((ignoredValue, throwable) -> {
+                .whenComplete((usage, throwable) -> {
                     if (throwable == null) {
                         String content = accumulated.toString();
 
@@ -210,10 +279,13 @@ public class AiComparisonService {
                                     )
                             );
                         } else {
+                            TokenUsage resolvedUsage =
+                                    usage == null ? TokenUsage.EMPTY : usage;
                             AiResponse saved = conversationService.saveRetriedResponse(
                                     turn.conversationId(),
                                     turn.userMessageId(),
-                                    AiResponse.success(null, providerName, content)
+                                    AiResponse.success(null, providerName,
+                                            content, resolvedUsage)
                             );
 
                             sseSupport.send(
@@ -223,7 +295,8 @@ public class AiComparisonService {
                                     new StreamDoneEvent(
                                             providerName,
                                             saved.messageId(),
-                                            saved.content()
+                                            saved.content(),
+                                            saved.usage()
                                     )
                             );
                         }
@@ -271,18 +344,54 @@ public class AiComparisonService {
                 ));
     }
 
+    private List<AiProvider> selectProviders(
+            List<AiProviderType> requestedProviderTypes
+    ) {
+        if (requestedProviderTypes == null) {
+            return providers;
+        }
+
+        if (requestedProviderTypes.isEmpty()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "En az bir AI seçilmelidir."
+            );
+        }
+
+        List<AiProvider> selectedProviders = providers.stream()
+                .filter(provider -> requestedProviderTypes.contains(
+                        provider.getProviderType()
+                ))
+                .toList();
+
+        if (selectedProviders.isEmpty()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Geçerli bir AI seçilmelidir."
+            );
+        }
+
+        return selectedProviders;
+    }
+
     private CompletableFuture<AiResponse> requestProvider(
             AiProvider provider,
-            String prompt
+            String prompt,
+            ResponseIntensity intensity
     ) {
         String providerName = provider.getProviderType().name();
 
         return CompletableFuture.supplyAsync(
-                        () -> AiResponse.success(
-                                null,
-                                providerName,
-                                provider.sendMessage(prompt)
-                        ),
+                        () -> {
+                            AiResult result =
+                                    provider.sendMessage(prompt, intensity);
+                            return AiResponse.success(
+                                    null,
+                                    providerName,
+                                    result.content(),
+                                    result.usage()
+                            );
+                        },
                         aiExecutor
                 )
                 .completeOnTimeout(

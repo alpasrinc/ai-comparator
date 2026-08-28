@@ -5,6 +5,7 @@ public record DebateMessageResponse(
         Integer roundNumber,
         String provider,
         String role,
-        String content
+        String content,
+        TokenUsage usage
 ) {
 }

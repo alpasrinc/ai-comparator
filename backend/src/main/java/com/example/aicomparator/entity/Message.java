@@ -56,6 +56,12 @@ public class Message {
     @Column(nullable = false, columnDefinition = "LONGTEXT")
     private String content;
 
+    @Column(name = "input_tokens")
+    private Long inputTokens;
+
+    @Column(name = "output_tokens")
+    private Long outputTokens;
+
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -67,13 +73,17 @@ public class Message {
         Message parentMessage,
         MessageRole role,
         AiProviderType provider,
-        String content
+        String content,
+        Long inputTokens,
+        Long outputTokens
     ) {
         this.conversation = Objects.requireNonNull(conversation);
         this.parentMessage = parentMessage;
         this.role = Objects.requireNonNull(role);
         this.provider = provider;
         this.content = Objects.requireNonNull(content);
+        this.inputTokens = inputTokens;
+        this.outputTokens = outputTokens;
     }
 
     public static Message createUserMessage(
@@ -86,7 +96,9 @@ public class Message {
             parentMessage,
             MessageRole.USER,
             null,
-            content
+            content,
+            null,
+            null
         );
     }
 
@@ -96,12 +108,26 @@ public class Message {
         AiProviderType provider,
         String content
     ) {
+        return createAssistantMessage(
+            conversation, parentMessage, provider, content, null, null);
+    }
+
+    public static Message createAssistantMessage(
+        Conversation conversation,
+        Message parentMessage,
+        AiProviderType provider,
+        String content,
+        Long inputTokens,
+        Long outputTokens
+    ) {
         return new Message(
             conversation,
             parentMessage,
             MessageRole.ASSISTANT,
             Objects.requireNonNull(provider),
-            content
+            content,
+            inputTokens,
+            outputTokens
         );
     }
 
@@ -132,6 +158,14 @@ public class Message {
 
     public String getContent() {
         return content;
+    }
+
+    public Long getInputTokens() {
+        return inputTokens;
+    }
+
+    public Long getOutputTokens() {
+        return outputTokens;
     }
 
     public Instant getCreatedAt() {

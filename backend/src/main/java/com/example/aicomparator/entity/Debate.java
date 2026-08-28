@@ -42,9 +42,6 @@ public class Debate {
     @Column(nullable = false, length = 20)
     private DebateStatus status;
 
-    @Column(name = "final_answer", columnDefinition = "LONGTEXT")
-    private String finalAnswer;
-
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(
         name = "debate_participants",
@@ -76,8 +73,7 @@ public class Debate {
         this.status = DebateStatus.RUNNING;
     }
 
-    public void complete(String finalAnswer) {
-        this.finalAnswer = finalAnswer;
+    public void complete() {
         this.status = DebateStatus.COMPLETED;
     }
 
@@ -119,10 +115,6 @@ public class Debate {
 
     public DebateStatus getStatus() {
         return status;
-    }
-
-    public String getFinalAnswer() {
-        return finalAnswer;
     }
 
     public Set<AiProviderType> getParticipants() {

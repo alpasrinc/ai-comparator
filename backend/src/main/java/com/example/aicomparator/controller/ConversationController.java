@@ -8,6 +8,9 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.ResponseStatus;
 
 import com.example.aicomparator.dto.ConversationDetailResponse;
 import com.example.aicomparator.dto.ConversationSummaryResponse;
@@ -50,5 +53,11 @@ public ConversationDetailResponse getConversation(
                 conversationId,
                 request.messageId()
         );
+    }
+
+    @DeleteMapping("/{conversationId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteConversation(@PathVariable Long conversationId) {
+        conversationService.deleteConversation(conversationId);
     }
 }

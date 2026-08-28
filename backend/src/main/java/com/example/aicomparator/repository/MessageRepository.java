@@ -4,6 +4,9 @@ import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import com.example.aicomparator.entity.Message;
 
@@ -21,5 +24,19 @@ public interface MessageRepository
     Optional<Message> findByIdAndConversation_Id(
         Long messageId,
         Long conversationId
-);
+    );
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update Message message set message.parentMessage = null "
+            + "where message.conversation.id = :conversationId")
+    int clearParentLinksByConversationId(
+            @Param("conversationId") Long conversationId
+    );
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("delete from Message message "
+            + "where message.conversation.id = :conversationId")
+    int deleteByConversationId(
+            @Param("conversationId") Long conversationId
+    );
 }

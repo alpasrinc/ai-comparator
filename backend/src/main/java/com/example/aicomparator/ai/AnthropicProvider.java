@@ -1,10 +1,14 @@
 package com.example.aicomparator.ai;
 
 import java.util.function.Consumer;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import com.example.aicomparator.dto.AiResult;
+import com.example.aicomparator.dto.ResponseIntensity;
+import com.example.aicomparator.dto.TokenUsage;
 import com.example.aicomparator.entity.AiProviderType;
 import com.anthropic.client.AnthropicClient;
 import com.anthropic.client.okhttp.AnthropicOkHttpClient;
@@ -34,13 +38,18 @@ public class AnthropicProvider implements AiProvider  {
     }
 
     @Override
-public AiProviderType getProviderType() {
-    return AiProviderType.ANTHROPIC;
-}
+    public AiProviderType getProviderType() {
+        return AiProviderType.ANTHROPIC;
+    }
 
     @Override
-    public String sendMessage(String userMessage) {
-        MessageCreateParams params = createParams(userMessage, maxOutputTokens);
+    public AiResult sendMessage(
+            String userMessage,
+            ResponseIntensity intensity
+    ) {
+        MessageCreateParams params = createParams(
+                intensity.applyTo(userMessage),
+                intensity.scaleTokens(maxOutputTokens));
 
         Message response = client.messages().create(params);
 
@@ -53,42 +62,63 @@ public AiProviderType getProviderType() {
             throw new IllegalStateException("Anthropic boş bir cevap döndürdü.");
         }
 
-        return content;
+        TokenUsage usage = new TokenUsage(
+                response.usage().inputTokens(),
+                response.usage().outputTokens());
+
+        return new AiResult(content, usage);
     }
 
     @Override
-    public void streamMessage(String userMessage, Consumer<String> onToken) {
-        streamWithLimit(userMessage, onToken, maxOutputTokens);
-    }
-
-    @Override
-    public void streamSynthesisMessage(
+    public TokenUsage streamMessage(
             String userMessage,
+            ResponseIntensity intensity,
             Consumer<String> onToken
     ) {
-        streamWithLimit(userMessage, onToken, synthesisMaxOutputTokens);
+        return streamWithLimit(userMessage, intensity, onToken,
+                intensity.scaleTokens(maxOutputTokens));
     }
 
-    private void streamWithLimit(
+    @Override
+    public TokenUsage streamSynthesisMessage(
             String userMessage,
+            ResponseIntensity intensity,
+            Consumer<String> onToken
+    ) {
+        return streamWithLimit(userMessage, intensity, onToken,
+                intensity.scaleTokens(synthesisMaxOutputTokens));
+    }
+
+    private TokenUsage streamWithLimit(
+            String userMessage,
+            ResponseIntensity intensity,
             Consumer<String> onToken,
             long outputTokenLimit
     ) {
         MessageCreateParams params = createParams(
-                userMessage, outputTokenLimit);
+                intensity.applyTo(userMessage), outputTokenLimit);
+
+        AtomicLong inputTokens = new AtomicLong(0);
+        AtomicLong outputTokens = new AtomicLong(0);
 
         try (
                 StreamResponse<RawMessageStreamEvent> stream =
                         client.messages().createStreaming(params)
         ) {
-            stream.stream().forEach(event ->
-                    event.contentBlockDelta().ifPresent(blockDelta ->
-                            blockDelta.delta().text().ifPresent(
-                                    textDelta -> onToken.accept(textDelta.text())
-                            )
-                    )
-            );
+            stream.stream().forEach(event -> {
+                event.contentBlockDelta().ifPresent(blockDelta ->
+                        blockDelta.delta().text().ifPresent(
+                                textDelta -> onToken.accept(textDelta.text())
+                        )
+                );
+                event.messageStart().ifPresent(start ->
+                        inputTokens.set(start.message().usage().inputTokens()));
+                event.messageDelta().ifPresent(delta ->
+                        outputTokens.set(delta.usage().outputTokens()));
+            });
         }
+
+        return new TokenUsage(inputTokens.get(), outputTokens.get());
     }
 
     private MessageCreateParams createParams(
