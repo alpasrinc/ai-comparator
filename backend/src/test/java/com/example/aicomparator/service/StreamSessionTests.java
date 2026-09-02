@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 import java.io.IOException;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 class StreamSessionTests {
@@ -61,5 +62,59 @@ class StreamSessionTests {
         session.cancel();
         assertThatThrownBy(session::abortIfCancelled)
                 .isInstanceOf(StreamCancelledException.class);
+    }
+
+    @Test
+    void completionWeInitiatedDoesNotCountAsCancellation() {
+        SseEmitter emitter = mock(SseEmitter.class);
+        ArgumentCaptor<Runnable> onCompletion =
+                ArgumentCaptor.forClass(Runnable.class);
+        StreamSession session = new StreamSession(emitter);
+        verify(emitter).onCompletion(onCompletion.capture());
+
+        session.complete();
+        onCompletion.getValue().run();
+
+        assertThat(session.isCancelled()).isFalse();
+    }
+
+    @Test
+    void completionWeDidNotInitiateCancels() {
+        SseEmitter emitter = mock(SseEmitter.class);
+        ArgumentCaptor<Runnable> onCompletion =
+                ArgumentCaptor.forClass(Runnable.class);
+        StreamSession session = new StreamSession(emitter);
+        verify(emitter).onCompletion(onCompletion.capture());
+
+        onCompletion.getValue().run();
+
+        assertThat(session.isCancelled()).isTrue();
+    }
+
+    @Test
+    void serializationFailureDropsTheFrameWithoutCancelling() throws Exception {
+        SseEmitter emitter = mock(SseEmitter.class);
+        doThrow(new IllegalStateException(
+                        "Failed to send", new RuntimeException("jackson")))
+                .when(emitter).send(any(SseEmitter.SseEventBuilder.class));
+        StreamSession session = new StreamSession(emitter);
+
+        boolean sent = session.send("token", "merhaba");
+
+        assertThat(sent).isFalse();
+        assertThat(session.isCancelled()).isFalse();
+    }
+
+    @Test
+    void alreadyCompletedEmitterCancels() throws Exception {
+        SseEmitter emitter = mock(SseEmitter.class);
+        doThrow(new IllegalStateException("already set complete"))
+                .when(emitter).send(any(SseEmitter.SseEventBuilder.class));
+        StreamSession session = new StreamSession(emitter);
+
+        boolean sent = session.send("token", "merhaba");
+
+        assertThat(sent).isFalse();
+        assertThat(session.isCancelled()).isTrue();
     }
 }
