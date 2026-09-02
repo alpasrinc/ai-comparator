@@ -7,6 +7,7 @@ import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import com.example.aicomparator.dto.AiResult;
+import com.example.aicomparator.dto.PromptParts;
 import com.example.aicomparator.dto.ResponseIntensity;
 import com.example.aicomparator.dto.TokenUsage;
 import com.example.aicomparator.entity.AiProviderType;
@@ -44,11 +45,11 @@ public class AnthropicProvider implements AiProvider  {
 
     @Override
     public AiResult sendMessage(
-            String userMessage,
+            PromptParts prompt,
             ResponseIntensity intensity
     ) {
         MessageCreateParams params = createParams(
-                intensity.applyTo(userMessage),
+                renderPrompt(prompt, intensity),
                 intensity.scaleTokens(maxOutputTokens));
 
         Message response = client.messages().create(params);
@@ -71,32 +72,32 @@ public class AnthropicProvider implements AiProvider  {
 
     @Override
     public TokenUsage streamMessage(
-            String userMessage,
+            PromptParts prompt,
             ResponseIntensity intensity,
             Consumer<String> onToken
     ) {
-        return streamWithLimit(userMessage, intensity, onToken,
+        return streamWithLimit(prompt, intensity, onToken,
                 intensity.scaleTokens(maxOutputTokens));
     }
 
     @Override
     public TokenUsage streamSynthesisMessage(
-            String userMessage,
+            PromptParts prompt,
             ResponseIntensity intensity,
             Consumer<String> onToken
     ) {
-        return streamWithLimit(userMessage, intensity, onToken,
+        return streamWithLimit(prompt, intensity, onToken,
                 intensity.scaleTokens(synthesisMaxOutputTokens));
     }
 
     private TokenUsage streamWithLimit(
-            String userMessage,
+            PromptParts prompt,
             ResponseIntensity intensity,
             Consumer<String> onToken,
             long outputTokenLimit
     ) {
         MessageCreateParams params = createParams(
-                intensity.applyTo(userMessage), outputTokenLimit);
+                renderPrompt(prompt, intensity), outputTokenLimit);
 
         AtomicLong inputTokens = new AtomicLong(0);
         AtomicLong outputTokens = new AtomicLong(0);
@@ -121,14 +122,27 @@ public class AnthropicProvider implements AiProvider  {
         return new TokenUsage(inputTokens.get(), outputTokens.get());
     }
 
+    /**
+     * Sağlayıcıya gidecek nihai metin. Yoğunluk yönergesi yalnızca
+     * değişken kuyruğa girer; prefix istekler arasında byte-byte aynı
+     * kalmalıdır.
+     */
+    private String renderPrompt(
+            PromptParts prompt,
+            ResponseIntensity intensity
+    ) {
+        return prompt.cacheablePrefix()
+                + intensity.applyTo(prompt.volatileSuffix());
+    }
+
     private MessageCreateParams createParams(
-            String userMessage,
+            String renderedPrompt,
             long outputTokenLimit
     ) {
         return MessageCreateParams.builder()
                 .model(model)
                 .maxTokens(outputTokenLimit)
-                .addUserMessage(userMessage)
+                .addUserMessage(renderedPrompt)
                 .build();
     }
 }

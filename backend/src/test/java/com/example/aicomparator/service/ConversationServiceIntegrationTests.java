@@ -11,6 +11,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.example.aicomparator.dto.AiResponse;
 import com.example.aicomparator.dto.CompareResponse;
+import com.example.aicomparator.dto.PromptParts;
+import com.example.aicomparator.dto.ResponseIntensity;
 import com.example.aicomparator.entity.AiProviderType;
 import com.example.aicomparator.entity.Message;
 import com.example.aicomparator.entity.MessageRole;
@@ -128,7 +130,7 @@ void shouldContinueFromSelectedAssistantMessage() {
                     firstComparison.conversationId(),
                     "Bir örnek verir misin?",
                     AiProviderType.OPENAI
-            );
+            ).joined();
 
     assertThat(contextPrompt)
             .contains(
@@ -289,7 +291,7 @@ void shouldLabelHistoricalResponsesWithProviderNameInRetryPrompt() {
             continuation.conversationId(),
             continuation.userMessageId(),
             AiProviderType.GEMINI
-    );
+    ).joined();
 
     assertThat(retryPrompt)
             .contains(
@@ -380,4 +382,106 @@ void shouldDeleteConversationWithAllMessages() {
             ))
             .isEmpty();
 }
+
+    @Test
+    void cacheablePrefixGrowsAsAStrictPrefixAcrossTurns() {
+        CompareResponse firstTurn = conversationService.saveComparison(
+                "Java nedir?",
+                List.of(new AiResponse(null, "ANTHROPIC", "Java bir dildir."))
+        );
+        conversationService.selectActiveMessage(
+                firstTurn.conversationId(),
+                firstTurn.responses().get(0).messageId()
+        );
+
+        PromptParts turnTwo = conversationService.buildActiveContextPrompt(
+                firstTurn.conversationId(),
+                "Örnek verir misin?",
+                AiProviderType.ANTHROPIC
+        );
+
+        CompareResponse secondTurn = conversationService.saveContinuation(
+                firstTurn.conversationId(),
+                "Örnek verir misin?",
+                List.of(new AiResponse(null, "ANTHROPIC", "Şöyle: ..."))
+        );
+        conversationService.selectActiveMessage(
+                firstTurn.conversationId(),
+                secondTurn.responses().get(0).messageId()
+        );
+
+        PromptParts turnThree = conversationService.buildActiveContextPrompt(
+                firstTurn.conversationId(),
+                "Peki ya performans?",
+                AiProviderType.ANTHROPIC
+        );
+
+        // Cache'in çalışmasının tek şartı: önceki prefix, sonrakinin
+        // byte-byte öneki olmalı.
+        assertThat(turnThree.cacheablePrefix())
+                .startsWith(turnTwo.cacheablePrefix())
+                .isNotEqualTo(turnTwo.cacheablePrefix());
+    }
+
+    @Test
+    void cacheablePrefixDoesNotDependOnIntensity() {
+        CompareResponse turn = conversationService.saveComparison(
+                "Java nedir?",
+                List.of(new AiResponse(null, "ANTHROPIC", "Java bir dildir."))
+        );
+        conversationService.selectActiveMessage(
+                turn.conversationId(),
+                turn.responses().get(0).messageId()
+        );
+
+        PromptParts parts = conversationService.buildActiveContextPrompt(
+                turn.conversationId(),
+                "Örnek?",
+                AiProviderType.ANTHROPIC
+        );
+
+        // Yoğunluk yönergesi prefix'te olmamalı; onu ekleyen taraf
+        // volatileSuffix üzerinde çalışır.
+        assertThat(parts.cacheablePrefix())
+                .doesNotContain("Kısa ve öz")
+                .doesNotContain("Kapsamlı ve detaylı");
+        assertThat(parts.volatileSuffix()).contains("Örnek?");
+        assertThat(ResponseIntensity.LOW.applyTo(parts.volatileSuffix()))
+                .startsWith("Kısa ve öz");
+    }
+
+    @Test
+    void retryPromptSharesTheCacheablePrefixOfTheOriginalTurn() {
+        CompareResponse firstTurn = conversationService.saveComparison(
+                "Java nedir?",
+                List.of(new AiResponse(null, "ANTHROPIC", "Java bir dildir."))
+        );
+        conversationService.selectActiveMessage(
+                firstTurn.conversationId(),
+                firstTurn.responses().get(0).messageId()
+        );
+
+        PromptParts continuation = conversationService.buildActiveContextPrompt(
+                firstTurn.conversationId(),
+                "Örnek verir misin?",
+                AiProviderType.ANTHROPIC
+        );
+
+        CompareResponse secondTurn = conversationService.saveContinuation(
+                firstTurn.conversationId(),
+                "Örnek verir misin?",
+                List.of(new AiResponse(null, "ANTHROPIC", "Şöyle: ..."))
+        );
+
+        PromptParts retry = conversationService.buildPromptForUserMessage(
+                firstTurn.conversationId(),
+                secondTurn.userMessageId(),
+                AiProviderType.ANTHROPIC
+        );
+
+        // "Tekrar dene" aynı dalı yeniden gönderir; aynı prefix'i okumalı ki
+        // ilk denemenin yazdığı cache'ten yararlanabilsin.
+        assertThat(retry.cacheablePrefix())
+                .isEqualTo(continuation.cacheablePrefix());
+    }
 }

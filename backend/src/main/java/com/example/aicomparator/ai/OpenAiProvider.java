@@ -5,6 +5,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 import com.example.aicomparator.dto.AiResult;
+import com.example.aicomparator.dto.PromptParts;
 import com.example.aicomparator.dto.ResponseIntensity;
 import com.example.aicomparator.dto.TokenUsage;
 import com.example.aicomparator.entity.AiProviderType;
@@ -44,10 +45,13 @@ public class OpenAiProvider implements AiProvider {
     }
 
     @Override
-    public AiResult sendMessage(String message, ResponseIntensity intensity) {
+    public AiResult sendMessage(
+            PromptParts prompt,
+            ResponseIntensity intensity
+    ) {
         ResponseCreateParams params = ResponseCreateParams.builder()
                 .model(model)
-                .input(intensity.applyTo(message))
+                .input(renderPrompt(prompt, intensity))
                 .maxOutputTokens(intensity.scaleTokens(maxOutputTokens))
                 .build();
 
@@ -73,33 +77,46 @@ public class OpenAiProvider implements AiProvider {
 
     @Override
     public TokenUsage streamMessage(
-            String userMessage,
+            PromptParts prompt,
             ResponseIntensity intensity,
             Consumer<String> onToken
     ) {
-        return streamWithLimit(userMessage, intensity, onToken,
+        return streamWithLimit(prompt, intensity, onToken,
                 intensity.scaleTokens(maxOutputTokens));
     }
 
     @Override
     public TokenUsage streamSynthesisMessage(
-            String userMessage,
+            PromptParts prompt,
             ResponseIntensity intensity,
             Consumer<String> onToken
     ) {
-        return streamWithLimit(userMessage, intensity, onToken,
+        return streamWithLimit(prompt, intensity, onToken,
                 intensity.scaleTokens(synthesisMaxOutputTokens));
     }
 
+    /**
+     * Sağlayıcıya gidecek nihai metin. Yoğunluk yönergesi yalnızca
+     * değişken kuyruğa girer; prefix istekler arasında byte-byte aynı
+     * kalmalıdır.
+     */
+    private String renderPrompt(
+            PromptParts prompt,
+            ResponseIntensity intensity
+    ) {
+        return prompt.cacheablePrefix()
+                + intensity.applyTo(prompt.volatileSuffix());
+    }
+
     private TokenUsage streamWithLimit(
-            String userMessage,
+            PromptParts prompt,
             ResponseIntensity intensity,
             Consumer<String> onToken,
             long outputTokenLimit
     ) {
         ResponseCreateParams params = ResponseCreateParams.builder()
                 .model(model)
-                .input(intensity.applyTo(userMessage))
+                .input(renderPrompt(prompt, intensity))
                 .maxOutputTokens(outputTokenLimit)
                 .build();
 

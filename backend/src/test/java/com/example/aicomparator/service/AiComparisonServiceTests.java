@@ -3,7 +3,6 @@ package com.example.aicomparator.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.doAnswer;
@@ -26,6 +25,7 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import com.example.aicomparator.ai.AiProvider;
+import com.example.aicomparator.dto.PromptParts;
 import com.example.aicomparator.dto.AiResponse;
 import com.example.aicomparator.dto.AiResult;
 import com.example.aicomparator.dto.CompareResponse;
@@ -125,9 +125,12 @@ class AiComparisonServiceTests {
                 .satisfies(response ->
                         assertThat(response.provider()).isEqualTo("OPENAI")
                 );
-        verify(openAi).sendMessage(eq("Merhaba"), any());
-        verify(anthropic, never()).sendMessage(anyString(), any());
-        verify(gemini, never()).sendMessage(anyString(), any());
+        verify(openAi).sendMessage(
+                eq(PromptParts.volatileOnly("Merhaba")), any());
+        verify(anthropic, never())
+                .sendMessage(any(PromptParts.class), any());
+        verify(gemini, never())
+                .sendMessage(any(PromptParts.class), any());
     }
 
     @Test
@@ -270,7 +273,7 @@ class AiComparisonServiceTests {
         when(provider.getProviderType()).thenReturn(AiProviderType.ANTHROPIC);
         doThrow(new IllegalStateException("boom"))
                 .when(provider)
-                .streamMessage(anyString(), any(), any());
+                .streamMessage(any(PromptParts.class), any(), any());
 
         ConversationService conversationService =
                 mock(ConversationService.class);
@@ -308,7 +311,7 @@ class AiComparisonServiceTests {
             }
 
             return TokenUsage.EMPTY;
-        }).when(provider).streamMessage(anyString(), any(), any());
+        }).when(provider).streamMessage(any(PromptParts.class), any(), any());
 
         return provider;
     }
@@ -319,7 +322,8 @@ class AiComparisonServiceTests {
     ) {
         AiProvider provider = mock(AiProvider.class);
         when(provider.getProviderType()).thenReturn(providerType);
-        when(provider.sendMessage(eq("Merhaba"), any()))
+        when(provider.sendMessage(
+                eq(PromptParts.volatileOnly("Merhaba")), any()))
                 .thenReturn(new AiResult(response, TokenUsage.EMPTY));
         return provider;
     }
@@ -327,7 +331,8 @@ class AiComparisonServiceTests {
     private AiProvider failingProvider(AiProviderType providerType) {
         AiProvider provider = mock(AiProvider.class);
         when(provider.getProviderType()).thenReturn(providerType);
-        when(provider.sendMessage(eq("Merhaba"), any()))
+        when(provider.sendMessage(
+                eq(PromptParts.volatileOnly("Merhaba")), any()))
                 .thenThrow(new IllegalStateException("API unavailable"));
         return provider;
     }

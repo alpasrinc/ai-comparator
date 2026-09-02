@@ -19,6 +19,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import com.example.aicomparator.ai.AiProvider;
 import com.example.aicomparator.dto.AiResponse;
+import com.example.aicomparator.dto.PromptParts;
 import com.example.aicomparator.dto.AiResult;
 import com.example.aicomparator.dto.CompareResponse;
 import com.example.aicomparator.dto.ResponseIntensity;
@@ -92,7 +93,8 @@ public class AiComparisonService {
                         .map(provider -> requestProvider(
                                 provider,
                                 conversationId == null
-                                        ? userMessage
+                                        ? PromptParts.volatileOnly(
+                                                userMessage)
                                         : conversationService.buildActiveContextPrompt(
                                                 conversationId,
                                                 userMessage,
@@ -127,7 +129,7 @@ public class AiComparisonService {
     ) {
         AiProvider provider = resolveProvider(providerType);
 
-        String prompt = conversationService.buildPromptForUserMessage(
+        PromptParts prompt = conversationService.buildPromptForUserMessage(
                 conversationId,
                 userMessageId,
                 providerType
@@ -162,7 +164,9 @@ public class AiComparisonService {
         AiProvider provider = resolveProvider(providerType);
 
         return requestProvider(
-                provider, message, ResponseIntensity.orDefault(intensity)
+                provider,
+                PromptParts.volatileOnly(message),
+                ResponseIntensity.orDefault(intensity)
         ).join();
     }
 
@@ -220,8 +224,8 @@ public class AiComparisonService {
         AtomicInteger remaining = new AtomicInteger(selectedProviders.size());
 
         for (AiProvider provider : selectedProviders) {
-            String providerPrompt = conversationId == null
-                    ? userMessage
+            PromptParts providerPrompt = conversationId == null
+                    ? PromptParts.volatileOnly(userMessage)
                     : conversationService.buildActiveContextPrompt(
                             turn.conversationId(),
                             userMessage,
@@ -235,7 +239,7 @@ public class AiComparisonService {
 
     private void streamProvider(
             AiProvider provider,
-            String prompt,
+            PromptParts prompt,
             ConversationService.UserTurnResult turn,
             ResponseIntensity intensity,
             SseEmitter emitter,
@@ -376,7 +380,7 @@ public class AiComparisonService {
 
     private CompletableFuture<AiResponse> requestProvider(
             AiProvider provider,
-            String prompt,
+            PromptParts prompt,
             ResponseIntensity intensity
     ) {
         String providerName = provider.getProviderType().name();

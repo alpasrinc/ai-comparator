@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import com.example.aicomparator.dto.PromptParts;
 import com.example.aicomparator.dto.ConversationDetailResponse;
 import com.example.aicomparator.dto.ConversationSummaryResponse;
 import com.example.aicomparator.dto.MessageHistoryResponse;
@@ -154,8 +155,14 @@ public class ConversationService {
         );
     }
 
+    /**
+     * Aktif dalın bağlam prompt'unu cache açısından ikiye ayırarak kurar.
+     *
+     * <p>Prefix her turda yalnızca sonuna ekleme alır, öncesi byte-byte
+     * aynı kalır; sağlayıcının prompt cache'i bunu okuyabilir.
+     */
     @Transactional(readOnly = true)
-    public String buildActiveContextPrompt(
+    public PromptParts buildActiveContextPrompt(
             Long conversationId,
             String newUserContent,
             AiProviderType targetProvider
@@ -179,17 +186,15 @@ public class ConversationService {
 
         Collections.reverse(activeBranch);
 
-        StringBuilder prompt = new StringBuilder(
+        // Cache'lenebilir kısım: kimlik + o ana kadarki dal.
+        StringBuilder prefix = new StringBuilder(
                 identityPreamble(targetProvider)
         );
 
-        appendTranscript(prompt, activeBranch);
+        appendTranscript(prefix, activeBranch);
 
-        prompt.append("USER: ")
-                .append(newUserContent)
-                .append("\n\nASSISTANT:");
-
-        return prompt.toString();
+        // Değişken kısım: yeni mesaj. Yoğunluk yönergesi de buraya girer.
+        return new PromptParts(prefix.toString(), userTurn(newUserContent));
     }
 
     @Transactional
@@ -272,7 +277,7 @@ public class ConversationService {
     }
 
     @Transactional(readOnly = true)
-    public String buildPromptForUserMessage(
+    public PromptParts buildPromptForUserMessage(
             Long conversationId,
             Long userMessageId,
             AiProviderType targetProvider
@@ -341,12 +346,18 @@ public class ConversationService {
         );
     }
 
-    private String buildBranchPrompt(
-            Message lastMessage,
+    /**
+     * "Tekrar dene" yolunun prompt'u. Bölme noktası
+     * {@link #buildActiveContextPrompt} ile aynıdır: son kullanıcı mesajı
+     * değişken kısımda kalır, böylece yeniden deneme ilk denemenin yazdığı
+     * cache prefix'ini okur.
+     */
+    private PromptParts buildBranchPrompt(
+            Message lastUserMessage,
             AiProviderType targetProvider
     ) {
         List<Message> activeBranch = new ArrayList<>();
-        Message currentMessage = lastMessage;
+        Message currentMessage = lastUserMessage.getParentMessage();
 
         while (currentMessage != null) {
             activeBranch.add(currentMessage);
@@ -355,14 +366,21 @@ public class ConversationService {
 
         Collections.reverse(activeBranch);
 
-        StringBuilder prompt = new StringBuilder(
+        StringBuilder prefix = new StringBuilder(
                 identityPreamble(targetProvider)
         );
 
-        appendTranscript(prompt, activeBranch);
+        appendTranscript(prefix, activeBranch);
 
-        prompt.append("ASSISTANT:");
-        return prompt.toString();
+        return new PromptParts(
+                prefix.toString(),
+                userTurn(lastUserMessage.getContent())
+        );
+    }
+
+    /** Prompt'un değişken kuyruğu: yeni kullanıcı turu ve cevap çağrısı. */
+    private static String userTurn(String userContent) {
+        return "USER: " + userContent + "\n\nASSISTANT:";
     }
 
     private void appendTranscript(

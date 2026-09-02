@@ -3,6 +3,7 @@ package com.example.aicomparator.ai;
 import java.util.function.Consumer;
 
 import com.example.aicomparator.dto.AiResult;
+import com.example.aicomparator.dto.PromptParts;
 import com.example.aicomparator.dto.ResponseIntensity;
 import com.example.aicomparator.dto.TokenUsage;
 import com.example.aicomparator.entity.AiProviderType;
@@ -11,7 +12,7 @@ public interface AiProvider {
 
     AiProviderType getProviderType();
 
-    AiResult sendMessage(String userMessage, ResponseIntensity intensity);
+    AiResult sendMessage(PromptParts prompt, ResponseIntensity intensity);
 
     /**
      * Cevabı parça parça üretir; her metin parçası geldiğinde onToken
@@ -19,7 +20,7 @@ public interface AiProvider {
      * döndürür.
      */
     TokenUsage streamMessage(
-            String userMessage,
+            PromptParts prompt,
             ResponseIntensity intensity,
             Consumer<String> onToken
     );
@@ -29,10 +30,10 @@ public interface AiProvider {
      * senteze özel çıktı limitini kullanır.
      */
     default TokenUsage streamSynthesisMessage(
-            String userMessage,
+            PromptParts prompt,
             ResponseIntensity intensity,
             Consumer<String> onToken
     ) {
-        return streamMessage(userMessage, intensity, onToken);
+        return streamMessage(prompt, intensity, onToken);
     }
 }
