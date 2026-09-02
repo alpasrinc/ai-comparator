@@ -31,11 +31,6 @@ public final class VectorMath {
                     "Sıfır vektör normalize edilemez.");
         }
 
-        if (!Double.isFinite(length)) {
-            throw new IllegalArgumentException(
-                    "Sonsuz ya da NaN bileşenli vektör normalize edilemez.");
-        }
-
         float[] normalized = new float[vector.length];
 
         for (int i = 0; i < vector.length; i++) {
@@ -72,8 +67,21 @@ public final class VectorMath {
     }
 
     /** Öklid uzunluğu; normalize ve cosine arasında tekrar etmesin diye ayrıldı. */
+    /**
+     * Vektörün uzunluğu. NaN/Infinity kontrolü burada duruyor ki hem
+     * {@link #normalize} hem {@link #cosine} tek bir kapıdan geçsin; aksi
+     * hâlde doğrudan cosine çağıran bir kod bozuk vektörü sessizce
+     * kullanmaya devam ederdi.
+     */
     private static double magnitude(float[] vector) {
-        return Math.sqrt(dot(vector, vector));
+        double length = Math.sqrt(dot(vector, vector));
+
+        if (!Double.isFinite(length)) {
+            throw new IllegalArgumentException(
+                    "Sonsuz ya da NaN bileşenli vektör kullanılamaz.");
+        }
+
+        return length;
     }
 
     /** Little-endian float dizisi; saklama biçimi budur ve değişmemelidir. */

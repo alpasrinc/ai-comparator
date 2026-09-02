@@ -93,6 +93,20 @@ class VectorMathTests {
     }
 
     @Test
+    void nonFiniteVectorsAreRejectedByCosineToo() {
+        // normalize'dan geçmeden doğrudan cosine çağıran bir kod da bozuk
+        // vektörü sessizce kullanamamalı.
+        assertThatThrownBy(() -> VectorMath.cosine(
+                new float[] {Float.NaN, 1f}, new float[] {1f, 0f}))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        assertThatThrownBy(() -> VectorMath.cosine(
+                new float[] {1f, 0f},
+                new float[] {Float.POSITIVE_INFINITY, 1f}))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void byteRoundTripHandlesProductionScaleVectors() {
         float[] original = new float[1536];
 
