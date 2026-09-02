@@ -1,6 +1,7 @@
 package com.example.aicomparator.config;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -21,16 +22,20 @@ public class AiRateLimitFilter extends HttpFilter {
 
     private final int capacity;
     private final long refillIntervalMillis;
+    private final List<String> protectedPathPrefixes;
     private final ConcurrentHashMap<String, TokenBucket> buckets =
             new ConcurrentHashMap<>();
 
     public AiRateLimitFilter(
             @Value("${ai.rate-limit.capacity:20}") int capacity,
             @Value("${ai.rate-limit.refill-interval-seconds:3}")
-            long refillIntervalSeconds
+            long refillIntervalSeconds,
+            @Value("${ai.rate-limit.protected-paths}")
+            List<String> protectedPathPrefixes
     ) {
         this.capacity = capacity;
         this.refillIntervalMillis = refillIntervalSeconds * 1000;
+        this.protectedPathPrefixes = List.copyOf(protectedPathPrefixes);
     }
 
     @Override
@@ -39,7 +44,13 @@ public class AiRateLimitFilter extends HttpFilter {
             HttpServletResponse response,
             FilterChain chain
     ) throws IOException, ServletException {
-        if (!request.getRequestURI().startsWith("/api/chat/")) {
+        String uri = request.getRequestURI();
+        boolean protectedPath = protectedPathPrefixes.stream()
+                        .anyMatch(uri::startsWith)
+                || (uri.startsWith("/api/conversations/")
+                        && uri.contains("/documents"));
+
+        if (!protectedPath) {
             chain.doFilter(request, response);
             return;
         }
