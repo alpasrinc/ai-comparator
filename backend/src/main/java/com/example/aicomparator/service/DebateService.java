@@ -119,6 +119,13 @@ public class DebateService {
         debateRepository.save(debate);
     }
 
+    @Transactional
+    public void markCancelled(Long debateId) {
+        Debate debate = requireDebate(debateId);
+        debate.cancel();
+        debateRepository.save(debate);
+    }
+
     @Transactional(readOnly = true)
     public List<DebateSummaryResponse> listDebates() {
         return debateRepository.findAllByOrderByUpdatedAtDesc().stream()
