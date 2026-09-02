@@ -62,6 +62,12 @@ public class Message {
     @Column(name = "output_tokens")
     private Long outputTokens;
 
+    @Column(name = "cache_read_tokens")
+    private Long cacheReadTokens;
+
+    @Column(name = "cache_write_tokens")
+    private Long cacheWriteTokens;
+
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -75,7 +81,9 @@ public class Message {
         AiProviderType provider,
         String content,
         Long inputTokens,
-        Long outputTokens
+        Long outputTokens,
+        Long cacheReadTokens,
+        Long cacheWriteTokens
     ) {
         this.conversation = Objects.requireNonNull(conversation);
         this.parentMessage = parentMessage;
@@ -84,6 +92,8 @@ public class Message {
         this.content = Objects.requireNonNull(content);
         this.inputTokens = inputTokens;
         this.outputTokens = outputTokens;
+        this.cacheReadTokens = cacheReadTokens;
+        this.cacheWriteTokens = cacheWriteTokens;
     }
 
     public static Message createUserMessage(
@@ -98,6 +108,8 @@ public class Message {
             null,
             content,
             null,
+            null,
+            null,
             null
         );
     }
@@ -109,7 +121,8 @@ public class Message {
         String content
     ) {
         return createAssistantMessage(
-            conversation, parentMessage, provider, content, null, null);
+            conversation, parentMessage, provider, content,
+            null, null, null, null);
     }
 
     public static Message createAssistantMessage(
@@ -118,7 +131,9 @@ public class Message {
         AiProviderType provider,
         String content,
         Long inputTokens,
-        Long outputTokens
+        Long outputTokens,
+        Long cacheReadTokens,
+        Long cacheWriteTokens
     ) {
         return new Message(
             conversation,
@@ -127,7 +142,9 @@ public class Message {
             Objects.requireNonNull(provider),
             content,
             inputTokens,
-            outputTokens
+            outputTokens,
+            cacheReadTokens,
+            cacheWriteTokens
         );
     }
 
@@ -166,6 +183,14 @@ public class Message {
 
     public Long getOutputTokens() {
         return outputTokens;
+    }
+
+    public Long getCacheReadTokens() {
+        return cacheReadTokens;
+    }
+
+    public Long getCacheWriteTokens() {
+        return cacheWriteTokens;
     }
 
     public Instant getCreatedAt() {

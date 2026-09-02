@@ -241,7 +241,9 @@ public class ConversationService {
                         AiProviderType.valueOf(response.provider()),
                         response.content(),
                         response.usage().inputTokens(),
-                        response.usage().outputTokens()
+                        response.usage().outputTokens(),
+                        response.usage().cacheReadTokens(),
+                        response.usage().cacheWriteTokens()
                 ))
                 .toList();
 
@@ -326,7 +328,9 @@ public class ConversationService {
                         AiProviderType.valueOf(response.provider()),
                         response.content(),
                         response.usage().inputTokens(),
-                        response.usage().outputTokens()
+                        response.usage().outputTokens(),
+                        response.usage().cacheReadTokens(),
+                        response.usage().cacheWriteTokens()
                 )
         );
 
@@ -340,9 +344,14 @@ public class ConversationService {
 
     private static TokenUsage usageOf(Message message) {
         return new TokenUsage(
-                message.getInputTokens() == null ? 0 : message.getInputTokens(),
+                message.getInputTokens() == null
+                        ? 0 : message.getInputTokens(),
                 message.getOutputTokens() == null
-                        ? 0 : message.getOutputTokens()
+                        ? 0 : message.getOutputTokens(),
+                message.getCacheReadTokens() == null
+                        ? 0 : message.getCacheReadTokens(),
+                message.getCacheWriteTokens() == null
+                        ? 0 : message.getCacheWriteTokens()
         );
     }
 

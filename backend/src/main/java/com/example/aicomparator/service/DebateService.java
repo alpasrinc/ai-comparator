@@ -73,7 +73,8 @@ public class DebateService {
         Debate debate = requireDebate(debateId);
         DebateMessage message = debateMessageRepository.save(
                 DebateMessage.participant(debate, round, provider, content,
-                        usage.inputTokens(), usage.outputTokens())
+                        usage.inputTokens(), usage.outputTokens(),
+                        usage.cacheReadTokens(), usage.cacheWriteTokens())
         );
         return message.getId();
     }
@@ -98,7 +99,8 @@ public class DebateService {
         Debate debate = requireDebate(debateId);
         DebateMessage message = debateMessageRepository.save(
                 DebateMessage.synthesis(debate, provider, content,
-                        usage.inputTokens(), usage.outputTokens())
+                        usage.inputTokens(), usage.outputTokens(),
+                        usage.cacheReadTokens(), usage.cacheWriteTokens())
         );
         debate.complete();
         debateRepository.save(debate);
@@ -153,11 +155,7 @@ public class DebateService {
                                 message.getProvider().name(),
                                 message.getRole().name(),
                                 message.getContent(),
-                                new TokenUsage(
-                                        message.getInputTokens() == null
-                                                ? 0 : message.getInputTokens(),
-                                        message.getOutputTokens() == null
-                                                ? 0 : message.getOutputTokens())
+                                usageOf(message)
                         ))
                 .toList();
 
@@ -198,4 +196,18 @@ public class DebateService {
                         "Münazara bulunamadı."
                 ));
     }
+
+    private static TokenUsage usageOf(DebateMessage message) {
+        return new TokenUsage(
+                message.getInputTokens() == null
+                        ? 0 : message.getInputTokens(),
+                message.getOutputTokens() == null
+                        ? 0 : message.getOutputTokens(),
+                message.getCacheReadTokens() == null
+                        ? 0 : message.getCacheReadTokens(),
+                message.getCacheWriteTokens() == null
+                        ? 0 : message.getCacheWriteTokens()
+        );
+    }
+
 }

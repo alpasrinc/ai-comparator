@@ -57,6 +57,12 @@ public class DebateMessage {
     @Column(name = "output_tokens")
     private Long outputTokens;
 
+    @Column(name = "cache_read_tokens")
+    private Long cacheReadTokens;
+
+    @Column(name = "cache_write_tokens")
+    private Long cacheWriteTokens;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -70,7 +76,9 @@ public class DebateMessage {
         DebateMessageRole role,
         String content,
         Long inputTokens,
-        Long outputTokens
+        Long outputTokens,
+        Long cacheReadTokens,
+        Long cacheWriteTokens
     ) {
         this.debate = Objects.requireNonNull(debate);
         this.roundNumber = roundNumber;
@@ -79,6 +87,8 @@ public class DebateMessage {
         this.content = Objects.requireNonNull(content);
         this.inputTokens = inputTokens;
         this.outputTokens = outputTokens;
+        this.cacheReadTokens = cacheReadTokens;
+        this.cacheWriteTokens = cacheWriteTokens;
     }
 
     public static DebateMessage participant(
@@ -87,7 +97,9 @@ public class DebateMessage {
         AiProviderType provider,
         String content,
         Long inputTokens,
-        Long outputTokens
+        Long outputTokens,
+        Long cacheReadTokens,
+        Long cacheWriteTokens
     ) {
         return new DebateMessage(
             debate,
@@ -96,7 +108,9 @@ public class DebateMessage {
             DebateMessageRole.PARTICIPANT,
             content,
             inputTokens,
-            outputTokens
+            outputTokens,
+            cacheReadTokens,
+            cacheWriteTokens
         );
     }
 
@@ -105,7 +119,9 @@ public class DebateMessage {
         AiProviderType provider,
         String content,
         Long inputTokens,
-        Long outputTokens
+        Long outputTokens,
+        Long cacheReadTokens,
+        Long cacheWriteTokens
     ) {
         return new DebateMessage(
             debate,
@@ -114,7 +130,9 @@ public class DebateMessage {
             DebateMessageRole.SYNTHESIS,
             content,
             inputTokens,
-            outputTokens
+            outputTokens,
+            cacheReadTokens,
+            cacheWriteTokens
         );
     }
 
@@ -153,6 +171,14 @@ public class DebateMessage {
 
     public Long getOutputTokens() {
         return outputTokens;
+    }
+
+    public Long getCacheReadTokens() {
+        return cacheReadTokens;
+    }
+
+    public Long getCacheWriteTokens() {
+        return cacheWriteTokens;
     }
 
     public Instant getCreatedAt() {
