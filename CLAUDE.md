@@ -41,19 +41,30 @@ Whole stack: `docker compose up --build` (needs the env vars below exported).
 
 ### The two orchestration services
 - **`AiComparisonService`** — fans a message to the selected providers concurrently on a virtual-thread executor (`aiExecutor`), joins the results, and persists. Per-provider timeout via `completeOnTimeout` (blocking) / `orTimeout` (streaming); a slow or failing provider degrades to an error response and never blocks the others.
-- **`DebateOrchestrator`** — **rounds are sequential, participants within a round run in parallel.** Round N+1's prompt is built from the full transcript of rounds 1..N (see `DebatePromptBuilder`). The in-memory `transcript` (`List<Map<AiProviderType,String>>`) is the debate's memory — the models are stateless, the orchestrator carries the history. If round 1 comes back entirely blank the debate is marked `FAILED`; otherwise it always ends with a synthesis pass.
+- **`DebateOrchestrator`** — **rounds are sequential, participants within a round run in parallel.** Round N+1's prompt carries **only round N's answers**, not the full transcript (`DebatePromptBuilder.buildCritiqueRoundPrompt` reads just the last entry) — so round 3 never sees round 1. Only `buildSynthesisPrompt` gets the whole transcript. The in-memory `transcript` (`List<Map<AiProviderType,String>>`) is what the orchestrator carries; the models are stateless. Whether that narrow window is intentional is an open question; widening it would also make the debate prompt cacheable. If round 1 comes back entirely blank the debate is marked `FAILED`; otherwise it always ends with a synthesis pass.
 
 ### Context building (compare mode) — `ConversationService`
 Messages form a tree via `parent_message_id` (self-FK). `buildActiveContextPrompt` walks from the conversation's `activeMessage` up to the root, so **only the selected branch** becomes context — sibling/alternative answers are excluded. Each prompt is prefixed with an identity preamble ("you are ChatGPT/Claude/Gemini") so a provider doesn't adopt another provider's self-description from the transcript.
+
+### Prompt caching
+Prompts are split into `PromptParts(cacheablePrefix, volatileSuffix)` and the split is what makes caching work — caching is a prefix match, so a single byte change anywhere in the prefix invalidates everything after it. In compare mode the prefix is the identity preamble plus the active branch transcript; the tail is the intensity directive plus the new user turn. **The intensity directive must stay in the tail** — it used to be prepended to the whole prompt, which invalidated the cache on every intensity change. The retry path (`buildBranchPrompt`) splits at the same point, so retrying a turn reads the prefix the first attempt wrote.
+
+`AnthropicProvider` marks the prefix with an explicit `cache_control` breakpoint (TTL via `anthropic.cache.ttl`, default `5m`); OpenAI and Gemini cache automatically once the prefix is stable. Debate mode gets no caching: `buildCritiqueRoundPrompt` sends only the previous round, so there is no growing prefix — it passes `PromptParts.volatileOnly(...)`.
+
+`TokenUsage` carries `cacheReadTokens` / `cacheWriteTokens` (persisted by `V5`). **`inputTokens` is no longer the whole prompt** — it is the uncached remainder, and total = `input + cacheRead + cacheWrite`. Anthropic reports it that way natively; OpenAI and Gemini include cached tokens in their input count, so the providers subtract it to keep one meaning across all three.
+
+The guard against silent regressions is `ConversationServiceIntegrationTests` asserting that one turn's `cacheablePrefix` is a byte-exact prefix of the next turn's. Caching fails silently — requests keep succeeding, the bill just goes up — so that assertion matters more than it looks.
+
+Note the Anthropic model matters: `claude-haiku-4-5` has a 4096-token minimum cacheable prefix (the highest tier), so caching only engages after roughly 8-10 turns. Below the threshold the breakpoint is silently inert and no write premium is charged.
 
 ### Streaming (SSE)
 Both stream endpoints emit `text/event-stream` frames (`event: <name>\ndata: <json>\n\n`). `SseSupport.send` wraps every emit in a per-emitter `synchronized` lock so parallel providers don't interleave frames. Frontend (`services/api.js`) reads the byte stream with `TextDecoder`, splits on `\n\n`, and **keeps the last fragment in a buffer** (it may be a half-frame) before `JSON.parse`. Event vocabularies differ by mode — compare: `start/token/done/error`; debate: `start/round-start/token/participant-done/participant-error/round-done/synthesis-done/done` (`round: 0` on a token means the synthesis stream).
 
 ### `ResponseIntensity`
-An enum (LOW/MEDIUM/HIGH) that does two things at once: `scaleTokens()` multiplies the provider's max-output-tokens, and `applyTo()` prepends a brevity/detail instruction to the prompt. Passed through the whole call chain.
+An enum (LOW/MEDIUM/HIGH) that does two things at once: `scaleTokens()` multiplies the provider's max-output-tokens, and `applyTo()` prepends a brevity/detail instruction to the **volatile half** of the prompt (`PromptParts.volatileSuffix`), never to the whole thing — see Prompt caching. Passed through the whole call chain; the providers apply it, the prompt builders do not.
 
 ### Persistence
-Schema is owned by **Flyway** (`db/migration/V1..V4`), not Hibernate — `spring.jpa.hibernate.ddl-auto=none`. Enums are stored as `VARCHAR` text (`.name()`), not ordinals. `open-in-view=false`, so entities must be fully loaded inside `@Transactional` service methods before returning DTOs. Token usage columns were added in `V4`.
+Schema is owned by **Flyway** (`db/migration/V1..V5`), not Hibernate — `spring.jpa.hibernate.ddl-auto=none`. Enums are stored as `VARCHAR` text (`.name()`), not ordinals. `open-in-view=false`, so entities must be fully loaded inside `@Transactional` service methods before returning DTOs. Token usage columns were added in `V4`, prompt-cache token columns in `V5`.
 
 ### Rate limiting
 `AiRateLimitFilter` is an in-memory per-IP token bucket guarding **only `/api/chat/**`** (the paid calls); returns 429 when exhausted. No external dependency.

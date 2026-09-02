@@ -29,6 +29,7 @@ Uygulama iki moddan oluşur:
 - Her turda diğer AI cevaplarını bağlam alarak eleştiren çok turlu akış
 - Tartışma sonunda seçilen bir sentezcinin daha uzun ortak cevabı yazması
 - Münazaraların MySQL'de saklanıp geçmişten yeniden açılması
+- Büyüyen konuşma bağlamı için prompt caching; cache token'larının ölçülüp rozette gösterilmesi
 
 ## Mimari
 
