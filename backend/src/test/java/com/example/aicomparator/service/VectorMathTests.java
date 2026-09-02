@@ -68,6 +68,44 @@ class VectorMathTests {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test
+    void cosineOfZeroVectorThrows() {
+        assertThatThrownBy(() ->
+                VectorMath.cosine(new float[] {0f, 0f}, new float[] {1f, 0f}))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void fromBytesRejectsTruncatedInput() {
+        assertThatThrownBy(() -> VectorMath.fromBytes(new byte[] {1, 2, 3}))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void nonFiniteVectorsCannotBeNormalized() {
+        assertThatThrownBy(() ->
+                VectorMath.normalize(new float[] {Float.NaN, 1f}))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        assertThatThrownBy(() ->
+                VectorMath.normalize(new float[] {Float.POSITIVE_INFINITY, 1f}))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void byteRoundTripHandlesProductionScaleVectors() {
+        float[] original = new float[1536];
+
+        for (int i = 0; i < original.length; i++) {
+            original[i] = (float) Math.sin(i) * (i - 768);
+        }
+
+        byte[] bytes = VectorMath.toBytes(original);
+
+        assertThat(bytes).hasSize(1536 * 4);
+        assertThat(VectorMath.fromBytes(bytes)).containsExactly(original);
+    }
+
     private static org.assertj.core.data.Offset<Double> within() {
         return org.assertj.core.data.Offset.offset(TOLERANCE);
     }

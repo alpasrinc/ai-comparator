@@ -16,13 +16,24 @@ public final class VectorMath {
     private VectorMath() {
     }
 
-    /** Birim uzunluğa indirger; sıfır vektör kabul edilmez. */
+    /**
+     * Birim uzunluğa indirger; sıfır vektör ve NaN/Infinity içeren vektörler
+     * kabul edilmez. Sonsuz ya da NaN bir büyüklük sessizce NaN bileşenler
+     * üretir; bu da benzerlik karşılaştırmalarında hep "false" sonucu vererek
+     * bozuk parçanın arama sonuçlarından fark edilmeden kaybolmasına yol açar
+     * (bkz. sınıf açıklaması).
+     */
     public static float[] normalize(float[] vector) {
-        double length = Math.sqrt(dot(vector, vector));
+        double length = magnitude(vector);
 
         if (length == 0.0) {
             throw new IllegalArgumentException(
                     "Sıfır vektör normalize edilemez.");
+        }
+
+        if (!Double.isFinite(length)) {
+            throw new IllegalArgumentException(
+                    "Sonsuz ya da NaN bileşenli vektör normalize edilemez.");
         }
 
         float[] normalized = new float[vector.length];
@@ -50,7 +61,7 @@ public final class VectorMath {
     }
 
     public static double cosine(float[] a, float[] b) {
-        double lengths = Math.sqrt(dot(a, a)) * Math.sqrt(dot(b, b));
+        double lengths = magnitude(a) * magnitude(b);
 
         if (lengths == 0.0) {
             throw new IllegalArgumentException(
@@ -58,6 +69,11 @@ public final class VectorMath {
         }
 
         return dot(a, b) / lengths;
+    }
+
+    /** Öklid uzunluğu; normalize ve cosine arasında tekrar etmesin diye ayrıldı. */
+    private static double magnitude(float[] vector) {
+        return Math.sqrt(dot(vector, vector));
     }
 
     /** Little-endian float dizisi; saklama biçimi budur ve değişmemelidir. */
