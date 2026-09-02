@@ -128,7 +128,7 @@ public class DebateService {
 
     @Transactional(readOnly = true)
     public List<DebateSummaryResponse> listDebates() {
-        return debateRepository.findAllByOrderByUpdatedAtDesc().stream()
+        return debateRepository.findAllByOrderByUpdatedAtDescIdDesc().stream()
                 .map(debate -> new DebateSummaryResponse(
                         debate.getId(),
                         debate.getTopic(),

@@ -425,7 +425,7 @@ public class ConversationService {
     @Transactional(readOnly = true)
 public List<ConversationSummaryResponse> getConversations() {
     return conversationRepository
-            .findAllByOrderByUpdatedAtDesc()
+            .findAllByOrderByUpdatedAtDescIdDesc()
             .stream()
             .map(conversation -> new ConversationSummaryResponse(
                     conversation.getId(),

@@ -8,5 +8,5 @@ import com.example.aicomparator.entity.Debate;
 
 public interface DebateRepository extends JpaRepository<Debate, Long> {
 
-    List<Debate> findAllByOrderByUpdatedAtDesc();
+    List<Debate> findAllByOrderByUpdatedAtDescIdDesc();
 }
