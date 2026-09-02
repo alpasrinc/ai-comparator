@@ -41,6 +41,13 @@ public final class StreamSession {
         });
     }
 
+    /**
+     * İstemcinin gittiğini bildirir — dar anlamda. Bizim başlattığımız bir
+     * tamamlanma bunu tetiklemez; kalan iş yapılıp yapılmayacağına karar
+     * vermek için (ör. sağlayıcı akışını kesmek) {@link #abortIfCancelled()}
+     * kullanılmalı, çünkü akışın alıcısı kalmaması hem iptalde hem
+     * tamamlanmada geçerlidir.
+     */
     public boolean isCancelled() {
         return cancelled.get();
     }
@@ -53,9 +60,11 @@ public final class StreamSession {
      * Olayı gönderir. İptal edilmişse hiç göndermez.
      *
      * <p>Gönderim sırasında istemcinin gerçekten gittiğini gösteren bir
-     * {@link IOException} ya da emitter'ın zaten tamamlanmış olduğunu
-     * gösteren cause'suz bir {@link IllegalStateException} yakalanırsa
-     * akışı iptal eder. Bir serileştirme hatasını (cause'lu
+     * {@link IOException} yakalanırsa akışı iptal eder. Emitter'ın zaten
+     * tamamlanmış olduğunu gösteren cause'suz bir {@link IllegalStateException}
+     * yakalanırsa, bu tamamlanma bizim kendi {@link #complete()}
+     * çağrımızdan değilse akışı iptal eder — kendi tamamlamamız istemci
+     * iptali sayılmaz. Bir serileştirme hatasını (cause'lu
      * {@code IllegalStateException}) ya da beklenmeyen herhangi bir
      * hatayı ise sadece loglar ve o tek frame'i düşürür — sunucu
      * kaynaklı bir hata, hâlâ bağlı bir istemciyi iptal etmemeli.
@@ -92,8 +101,12 @@ public final class StreamSession {
                     return false;
                 }
 
-                // Cause yok: emitter zaten tamamlanmış.
-                cancel();
+                // Cause yok: emitter zaten tamamlanmış. Bunu yalnızca biz
+                // tamamlamadıysak iptal say — kendi tamamlamamız iptal
+                // değil.
+                if (!completed.get()) {
+                    cancel();
+                }
                 return false;
             } catch (Exception unexpected) {
                 // send() sözleşmesi gereği fırlatmaz: token callback'lerinden
@@ -107,16 +120,19 @@ public final class StreamSession {
     }
 
     /**
-     * Token callback'lerinden çağrılır: iptal edilmişse sağlayıcı akışını
-     * exception fırlatarak keser.
+     * Token callback'lerinden çağrılır: akışın alıcısı kalmadıysa (iptal veya
+     * tamamlanma) sağlayıcı akışını exception fırlatarak keser.
      */
     public void abortIfCancelled() {
-        if (cancelled.get()) {
+        if (cancelled.get() || completed.get()) {
             throw new StreamCancelledException();
         }
     }
 
     public void complete() {
+        // Sıra önemli: onCompletion callback'i emitter.complete() sırasında
+        // konteyner thread'inde tetiklenebilir; bayrağı önce set etmezsek
+        // kendi tamamlamamızı iptal sanar.
         completed.set(true);
         synchronized (lock) {
             emitter.complete();

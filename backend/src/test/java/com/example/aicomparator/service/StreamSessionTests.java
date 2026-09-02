@@ -117,4 +117,33 @@ class StreamSessionTests {
         assertThat(sent).isFalse();
         assertThat(session.isCancelled()).isTrue();
     }
+
+    @Test
+    void unexpectedFailureDropsTheFrameWithoutCancelling() throws Exception {
+        SseEmitter emitter = mock(SseEmitter.class);
+        doThrow(new RuntimeException("beklenmeyen"))
+                .when(emitter).send(any(SseEmitter.SseEventBuilder.class));
+        StreamSession session = new StreamSession(emitter);
+
+        boolean sent = session.send("token", "merhaba");
+
+        assertThat(sent).isFalse();
+        assertThat(session.isCancelled()).isFalse();
+    }
+
+    @Test
+    void sendAfterOurOwnCompletionDoesNotReportClientCancellation() throws Exception {
+        SseEmitter emitter = mock(SseEmitter.class);
+        doThrow(new IllegalStateException("already set complete"))
+                .when(emitter).send(any(SseEmitter.SseEventBuilder.class));
+        StreamSession session = new StreamSession(emitter);
+
+        session.complete();
+        boolean sent = session.send("token", "geç kalan");
+
+        assertThat(sent).isFalse();
+        assertThat(session.isCancelled()).isFalse();
+        assertThatThrownBy(session::abortIfCancelled)
+                .isInstanceOf(StreamCancelledException.class);
+    }
 }
