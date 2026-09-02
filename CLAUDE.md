@@ -53,6 +53,8 @@ Prompts are split into `PromptParts(cacheablePrefix, volatileSuffix)` and the sp
 
 `TokenUsage` carries `cacheReadTokens` / `cacheWriteTokens` (persisted by `V5`). **`inputTokens` is no longer the whole prompt** — it is the uncached remainder, and total = `input + cacheRead + cacheWrite`. Anthropic reports it that way natively; OpenAI and Gemini include cached tokens in their input count, so the providers subtract it to keep one meaning across all three.
 
+Measured behaviour (2026-09-02, `gpt-5.6-luna`): OpenAI's automatic caching matched only **whole repeated prompts**, not a growing prefix — sending a request whose first 16k tokens byte-exactly extended the previous one reported `cached_tokens: 0` and wrote a fresh entry, while resending the identical request read 16035. So in compare mode OpenAI caching pays off on the **retry** path, not on turn-over-turn growth. Gemini reported no cached tokens over an 8-turn conversation either. The Anthropic path — the only one with an explicit prefix breakpoint, and the one this design targets — could not be measured because the API key had no credit balance; that verification is still outstanding.
+
 The guard against silent regressions is `ConversationServiceIntegrationTests` asserting that one turn's `cacheablePrefix` is a byte-exact prefix of the next turn's. Caching fails silently — requests keep succeeding, the bill just goes up — so that assertion matters more than it looks.
 
 Note the Anthropic model matters: `claude-haiku-4-5` has a 4096-token minimum cacheable prefix (the highest tier), so caching only engages after roughly 8-10 turns. Below the threshold the breakpoint is silently inert and no write premium is charged.
