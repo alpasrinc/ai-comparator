@@ -17,6 +17,7 @@ import com.openai.client.okhttp.OpenAIOkHttpClient;
 import com.openai.core.http.StreamResponse;
 import com.openai.models.responses.Response;
 import com.openai.models.responses.ResponseCreateParams;
+import com.openai.models.responses.ResponseUsage;
 import com.openai.models.responses.ResponseStreamEvent;
 
 @Service
@@ -69,7 +70,7 @@ public class OpenAiProvider implements AiProvider {
         }
 
         TokenUsage usage = response.usage()
-                .map(u -> new TokenUsage(u.inputTokens(), u.outputTokens()))
+                .map(OpenAiProvider::usageOf)
                 .orElse(TokenUsage.EMPTY);
 
         return new AiResult(content, usage);
@@ -132,12 +133,31 @@ public class OpenAiProvider implements AiProvider {
                         delta -> onToken.accept(delta.delta())
                 );
                 event.completed().ifPresent(done ->
-                        done.response().usage().ifPresent(u ->
-                                usage.set(new TokenUsage(
-                                        u.inputTokens(), u.outputTokens()))));
+                        done.response().usage().ifPresent(
+                                u -> usage.set(usageOf(u))));
             });
         }
 
         return usage.get();
     }
+
+    /**
+     * OpenAI'da cache açık işaretleme gerektirmez; tek yapılan, raporlanan
+     * cache okumasını kaydetmek.
+     *
+     * <p>Dikkat: OpenAI {@code inputTokens} değerine cache'ten okunanları
+     * <b>dahil</b> eder, Anthropic ise etmez. {@link TokenUsage} tek bir
+     * anlam taşısın diye (girdi = cache'lenmemiş kalan) burada çıkarılır.
+     */
+    private static TokenUsage usageOf(ResponseUsage usage) {
+        long cachedTokens = usage.inputTokensDetails().cachedTokens();
+
+        return new TokenUsage(
+                Math.max(0, usage.inputTokens() - cachedTokens),
+                usage.outputTokens(),
+                cachedTokens,
+                0
+        );
+    }
+
 }

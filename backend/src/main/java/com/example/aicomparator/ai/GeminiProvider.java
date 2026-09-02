@@ -135,11 +135,29 @@ public class GeminiProvider implements AiProvider {
         return usage;
     }
 
+    /**
+     * Gemini'de cache implicit çalışır; tek yapılan raporlanan okumayı
+     * kaydetmek.
+     *
+     * <p>Dikkat: {@code promptTokenCount} cache'ten okunanları
+     * <b>içerir</b>, Anthropic'in {@code input_tokens} alanı ise
+     * içermez. {@link TokenUsage} tek bir anlam taşısın diye
+     * (girdi = cache'lenmemiş kalan) burada çıkarılır.
+     */
     private TokenUsage extractUsage(GenerateContentResponse response) {
         return response.usageMetadata()
-                .map(meta -> new TokenUsage(
-                        meta.promptTokenCount().orElse(0),
-                        meta.candidatesTokenCount().orElse(0)))
+                .map(meta -> {
+                    long cachedTokens =
+                            meta.cachedContentTokenCount().orElse(0);
+
+                    return new TokenUsage(
+                            Math.max(0, meta.promptTokenCount().orElse(0)
+                                    - cachedTokens),
+                            meta.candidatesTokenCount().orElse(0),
+                            cachedTokens,
+                            0
+                    );
+                })
                 .orElse(TokenUsage.EMPTY);
     }
 
