@@ -3,6 +3,7 @@ package com.example.aicomparator.service;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
+import java.util.stream.IntStream;
 
 import org.junit.jupiter.api.Test;
 
@@ -33,7 +34,7 @@ class TextChunkerTests {
         assertThat(chunks).hasSizeGreaterThan(1);
         assertThat(chunks).extracting(TextChunker.TextChunk::index)
                 .containsExactlyElementsOf(
-                        java.util.stream.IntStream.range(0, chunks.size())
+                        IntStream.range(0, chunks.size())
                                 .boxed().toList());
         assertThat(chunks).allSatisfy(chunk ->
                 assertThat(chunk.content().length()).isLessThanOrEqualTo(100));
@@ -60,6 +61,28 @@ class TextChunkerTests {
         List<TextChunker.TextChunk> chunks = TextChunker.chunk(text, 100, 10);
 
         assertThat(chunks.get(0).content()).isEqualTo(paragraph);
+    }
+
+    @Test
+    void windowsLineEndingsAreNormalizedBeforeFindingParagraphs() {
+        String paragraph = "b".repeat(60);
+        String text = paragraph + "\r\n\r\n" + "c".repeat(120);
+
+        List<TextChunker.TextChunk> chunks = TextChunker.chunk(text, 100, 10);
+
+        assertThat(chunks.get(0).content()).isEqualTo(paragraph);
+        assertThat(chunks).allSatisfy(chunk ->
+                assertThat(chunk.content()).doesNotContain("\r"));
+    }
+
+    @Test
+    void breaksAtSingleLineEndingWhenNoStrongerBoundaryExists() {
+        String firstLine = "e".repeat(60);
+        String text = firstLine + "\n" + "f".repeat(120);
+
+        List<TextChunker.TextChunk> chunks = TextChunker.chunk(text, 100, 10);
+
+        assertThat(chunks.get(0).content()).isEqualTo(firstLine);
     }
 
     @Test
@@ -90,5 +113,13 @@ class TextChunkerTests {
         org.assertj.core.api.Assertions
                 .assertThatThrownBy(() -> TextChunker.chunk("abc", 50, 50))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void overlapMustStayBelowBoundarySearchRange() {
+        org.assertj.core.api.Assertions
+                .assertThatThrownBy(() -> TextChunker.chunk("abc", 100, 50))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("yarısından az");
     }
 }

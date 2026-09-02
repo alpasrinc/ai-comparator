@@ -27,12 +27,22 @@ public final class TextChunker {
         if (chunkSize <= 0) {
             throw new IllegalArgumentException("Parça boyutu pozitif olmalı.");
         }
-        if (overlap < 0 || overlap >= chunkSize) {
+        // Örtüşme, boundaryBefore'un garanti ettiği alt sınırdan (parçanın
+        // yarısı) büyük veya eşit olursa "end - overlap" başlangıcın gerisine
+        // düşebilir ve döngü her seferinde tek karakter ilerler — parça
+        // sayısı yüzlerce katına çıkar, gömme faturası sessizce patlar.
+        if (overlap < 0 || overlap >= chunkSize * MIN_BOUNDARY_RATIO) {
             throw new IllegalArgumentException(
-                    "Örtüşme parça boyutundan küçük olmalı.");
+                    "Örtüşme, ilerlemeyi durdurmayacak kadar küçük olmalı "
+                            + "(parça boyutunun yarısından az).");
         }
 
-        String normalized = text == null ? "" : text.strip();
+        // CRLF'yi LF'e indirger: "\r\n\r\n" harfi harfine "\n\n" içermez, bu
+        // yüzden paragraf katmanı (en kaliteli sınır) CRLF metinlerde
+        // sessizce hiç devreye girmezdi. Bu makine Windows olduğundan ve
+        // depo CRLF sakladığından bu, varsayılan durumdur.
+        String normalized = text == null ? ""
+                : text.replace("\r\n", "\n").replace("\r", "\n").strip();
 
         if (normalized.isEmpty()) {
             return List.of();
@@ -66,9 +76,10 @@ public final class TextChunker {
     }
 
     /**
-     * Parçayı paragraf, sonra cümle sınırında bitirmeye çalışır. Sınır çok
-     * geride kalıyorsa (parçanın yarısından öncesi) sert kesme yapılır —
-     * aksi hâlde tek bir uzun kelime sonsuz küçülmeye yol açardı.
+     * Parçayı paragraf, sonra cümle, sonra tek satır sonu sınırında
+     * bitirmeye çalışır. Sınır çok geride kalıyorsa (parçanın yarısından
+     * öncesi) sert kesme yapılır — aksi hâlde tek bir uzun kelime sonsuz
+     * küçülmeye yol açardı.
      */
     private static int boundaryBefore(String text, int start, int end) {
         int floor = start + (int) (MIN_BOUNDARY_RATIO * (end - start));
@@ -78,9 +89,21 @@ public final class TextChunker {
             return paragraph;
         }
 
-        int sentence = text.lastIndexOf(". ", end);
+        // fromIndex = end - 1: lastIndexOf(String, int) eşleşmeyi fromIndex'te
+        // de başlatabilir. end'den arasak "sentence" end'e eşit çıkabilir ve
+        // aşağıdaki +1 pencerenin bir karakter dışına taşardı.
+        int sentence = text.lastIndexOf(". ", end - 1);
         if (sentence > floor) {
             return sentence + 1;
+        }
+
+        // PDF metin çıkarımı genelde paragraf arasına boş satır koymaz, her
+        // satırı tek "\n" ile ayırır — bu yüzden paragraf katmanı PDF'lerde
+        // nadiren devreye girer. Tek satır sonu, kelime ortasından daha iyi
+        // ama cümle sonundan daha zayıf bir sınırdır.
+        int newline = text.lastIndexOf('\n', end);
+        if (newline > floor) {
+            return newline;
         }
 
         int space = text.lastIndexOf(' ', end);
