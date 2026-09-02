@@ -145,18 +145,22 @@ public class OpenAiProvider implements AiProvider {
      * OpenAI'da cache açık işaretleme gerektirmez; tek yapılan, raporlanan
      * cache okumasını kaydetmek.
      *
-     * <p>Dikkat: OpenAI {@code inputTokens} değerine cache'ten okunanları
-     * <b>dahil</b> eder, Anthropic ise etmez. {@link TokenUsage} tek bir
-     * anlam taşısın diye (girdi = cache'lenmemiş kalan) burada çıkarılır.
+     * <p>Dikkat: OpenAI {@code inputTokens} hem cache'ten okunanları hem
+     * cache'e yazılanları <b>içerir</b>, Anthropic ise ikisini de hariç
+     * tutar. {@link TokenUsage} her sağlayıcıda tek bir anlam taşısın
+     * (girdi = ne okunan ne yazılan kalan) ve {@code totalTokens()} çift
+     * saymasın diye ikisi de burada çıkarılır.
      */
     private static TokenUsage usageOf(ResponseUsage usage) {
         long cachedTokens = usage.inputTokensDetails().cachedTokens();
+        long cacheWriteTokens = usage.inputTokensDetails().cacheWriteTokens();
 
         return new TokenUsage(
-                Math.max(0, usage.inputTokens() - cachedTokens),
+                Math.max(0,
+                        usage.inputTokens() - cachedTokens - cacheWriteTokens),
                 usage.outputTokens(),
                 cachedTokens,
-                0
+                cacheWriteTokens
         );
     }
 
