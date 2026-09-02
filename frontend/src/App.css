@@ -2385,6 +2385,14 @@
   color: #64748b;
 }
 
+.token-usage__part--cache {
+  color: #7dd3fc;
+}
+
+.token-usage__part--cache em {
+  color: #38bdf8;
+}
+
 .token-usage__part--total {
   color: #e2e8f0;
   font-weight: 700;
