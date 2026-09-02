@@ -98,7 +98,8 @@ public class AiComparisonService {
                                         : conversationService.buildActiveContextPrompt(
                                                 conversationId,
                                                 userMessage,
-                                                provider.getProviderType()
+                                                provider.getProviderType(),
+                                                List.of()
                                         ),
                                 effectiveIntensity
                         ))
@@ -229,7 +230,8 @@ public class AiComparisonService {
                     : conversationService.buildActiveContextPrompt(
                             turn.conversationId(),
                             userMessage,
-                            provider.getProviderType()
+                            provider.getProviderType(),
+                            List.of()
                     );
 
             streamProvider(provider, providerPrompt, turn, effectiveIntensity,

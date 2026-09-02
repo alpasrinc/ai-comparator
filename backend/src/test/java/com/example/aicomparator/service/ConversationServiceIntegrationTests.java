@@ -13,6 +13,7 @@ import com.example.aicomparator.dto.AiResponse;
 import com.example.aicomparator.dto.CompareResponse;
 import com.example.aicomparator.dto.PromptParts;
 import com.example.aicomparator.dto.ResponseIntensity;
+import com.example.aicomparator.dto.RetrievedChunk;
 import com.example.aicomparator.entity.AiProviderType;
 import com.example.aicomparator.entity.Message;
 import com.example.aicomparator.entity.MessageRole;
@@ -483,5 +484,48 @@ void shouldDeleteConversationWithAllMessages() {
         // ilk denemenin yazdığı cache'ten yararlanabilsin.
         assertThat(retry.cacheablePrefix())
                 .isEqualTo(continuation.cacheablePrefix());
+    }
+
+    @Test
+    void retrievedSourcesNeverEnterTheCacheablePrefix() {
+        CompareResponse turn = conversationService.saveComparison(
+                "Java nedir?",
+                List.of(new AiResponse(null, "ANTHROPIC", "Java bir dildir."))
+        );
+        conversationService.selectActiveMessage(
+                turn.conversationId(),
+                turn.responses().get(0).messageId()
+        );
+
+        List<RetrievedChunk> sources = List.of(new RetrievedChunk(
+                1L, 1L, "belge.pdf", 3, "BELGE PARCASI", 0.9));
+
+        PromptParts withSources = conversationService.buildActiveContextPrompt(
+                turn.conversationId(), "soru", AiProviderType.ANTHROPIC, sources);
+        PromptParts withoutSources = conversationService.buildActiveContextPrompt(
+                turn.conversationId(), "soru", AiProviderType.ANTHROPIC, List.of());
+
+        assertThat(withSources.cacheablePrefix())
+                .isEqualTo(withoutSources.cacheablePrefix())
+                .doesNotContain("BELGE PARCASI");
+        assertThat(withSources.volatileSuffix()).contains("BELGE PARCASI");
+        assertThat(withSources.volatileSuffix()).contains("belge.pdf");
+    }
+
+    @Test
+    void theSourcesBlockIsOmittedWhenThereAreNoSources() {
+        CompareResponse turn = conversationService.saveComparison(
+                "Java nedir?",
+                List.of(new AiResponse(null, "ANTHROPIC", "Java bir dildir."))
+        );
+        conversationService.selectActiveMessage(
+                turn.conversationId(),
+                turn.responses().get(0).messageId()
+        );
+
+        PromptParts parts = conversationService.buildActiveContextPrompt(
+                turn.conversationId(), "soru", AiProviderType.ANTHROPIC, List.of());
+
+        assertThat(parts.volatileSuffix()).isEqualTo("USER: soru\n\nASSISTANT:");
     }
 }

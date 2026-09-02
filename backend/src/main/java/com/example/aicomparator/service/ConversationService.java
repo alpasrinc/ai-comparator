@@ -18,12 +18,17 @@ import com.example.aicomparator.dto.ActiveMessageResponse;
 import com.example.aicomparator.dto.AiResponse;
 import com.example.aicomparator.dto.CompareResponse;
 import com.example.aicomparator.dto.TokenUsage;
+import com.example.aicomparator.dto.RetrievedChunk;
 import com.example.aicomparator.entity.AiProviderType;
 import com.example.aicomparator.entity.Conversation;
+import com.example.aicomparator.entity.DocumentChunk;
 import com.example.aicomparator.entity.Message;
 import com.example.aicomparator.entity.MessageRole;
+import com.example.aicomparator.entity.MessageSource;
 import com.example.aicomparator.repository.ConversationRepository;
+import com.example.aicomparator.repository.DocumentChunkRepository;
 import com.example.aicomparator.repository.MessageRepository;
+import com.example.aicomparator.repository.MessageSourceRepository;
 
 @Service
 public class ConversationService {
@@ -35,13 +40,19 @@ public class ConversationService {
 
     private final ConversationRepository conversationRepository;
     private final MessageRepository messageRepository;
+    private final MessageSourceRepository messageSourceRepository;
+    private final DocumentChunkRepository documentChunkRepository;
 
     public ConversationService(
             ConversationRepository conversationRepository,
-            MessageRepository messageRepository
+            MessageRepository messageRepository,
+            MessageSourceRepository messageSourceRepository,
+            DocumentChunkRepository documentChunkRepository
     ) {
         this.conversationRepository = conversationRepository;
         this.messageRepository = messageRepository;
+        this.messageSourceRepository = messageSourceRepository;
+        this.documentChunkRepository = documentChunkRepository;
     }
 
     @Transactional
@@ -165,7 +176,8 @@ public class ConversationService {
     public PromptParts buildActiveContextPrompt(
             Long conversationId,
             String newUserContent,
-            AiProviderType targetProvider
+            AiProviderType targetProvider,
+            List<RetrievedChunk> sources
     ) {
         Conversation conversation = findConversation(conversationId);
         Message currentMessage = conversation.getActiveMessage();
@@ -193,8 +205,19 @@ public class ConversationService {
 
         appendTranscript(prefix, activeBranch);
 
-        // Değişken kısım: yeni mesaj. Yoğunluk yönergesi de buraya girer.
-        return new PromptParts(prefix.toString(), userTurn(newUserContent));
+        return new PromptParts(
+                prefix.toString(),
+                sourcesBlock(sources) + userTurn(newUserContent)
+        );
+    }
+
+    public PromptParts buildActiveContextPrompt(
+            Long conversationId,
+            String newUserContent,
+            AiProviderType targetProvider
+    ) {
+        return buildActiveContextPrompt(
+                conversationId, newUserContent, targetProvider, List.of());
     }
 
     @Transactional
@@ -298,7 +321,8 @@ public class ConversationService {
             );
         }
 
-        return buildBranchPrompt(userMessage, targetProvider);
+        return buildBranchPrompt(
+                userMessage, targetProvider, sourcesOf(userMessageId));
     }
 
     @Transactional
@@ -363,7 +387,8 @@ public class ConversationService {
      */
     private PromptParts buildBranchPrompt(
             Message lastUserMessage,
-            AiProviderType targetProvider
+            AiProviderType targetProvider,
+            List<RetrievedChunk> sources
     ) {
         List<Message> activeBranch = new ArrayList<>();
         Message currentMessage = lastUserMessage.getParentMessage();
@@ -383,8 +408,68 @@ public class ConversationService {
 
         return new PromptParts(
                 prefix.toString(),
-                userTurn(lastUserMessage.getContent())
+                sourcesBlock(sources) + userTurn(lastUserMessage.getContent())
         );
+    }
+
+    private static String sourcesBlock(List<RetrievedChunk> sources) {
+        if (sources == null || sources.isEmpty()) {
+            return "";
+        }
+
+        StringBuilder block = new StringBuilder(
+                "Aşağıdaki kaynaklara dayanarak cevap ver. Kaynaklarda "
+                        + "olmayan bir şeyi uydurma; bilgi kaynaklarda yoksa "
+                        + "bunu söyle.\n\n");
+
+        int order = 1;
+
+        for (RetrievedChunk source : sources) {
+            block.append('[').append(order++).append("] ")
+                    .append(source.filename())
+                    .append(" (parça ").append(source.chunkIndex()).append(")\n")
+                    .append(source.content())
+                    .append("\n\n");
+        }
+
+        return block.toString();
+    }
+
+    @Transactional(readOnly = true)
+    public List<RetrievedChunk> sourcesOf(Long userMessageId) {
+        return messageSourceRepository.findByMessageId(userMessageId).stream()
+                .map(source -> new RetrievedChunk(
+                        source.getChunk().getId(),
+                        source.getChunk().getDocument().getId(),
+                        source.getChunk().getDocument().getFilename(),
+                        source.getChunk().getChunkIndex(),
+                        source.getChunk().getContent(),
+                        source.getSimilarity()
+                ))
+                .toList();
+    }
+
+    @Transactional
+    public void saveSources(Long userMessageId, List<RetrievedChunk> sources) {
+        if (sources.isEmpty()) {
+            return;
+        }
+
+        Message userMessage = messageRepository.findById(userMessageId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Kullanıcı mesajı bulunamadı."));
+
+        List<MessageSource> rows = new ArrayList<>(sources.size());
+
+        for (int i = 0; i < sources.size(); i++) {
+            RetrievedChunk source = sources.get(i);
+            DocumentChunk chunk = documentChunkRepository
+                    .getReferenceById(source.chunkId());
+            rows.add(new MessageSource(
+                    userMessage, chunk, source.similarity(), i));
+        }
+
+        messageSourceRepository.saveAll(rows);
     }
 
     /** Prompt'un değişken kuyruğu: yeni kullanıcı turu ve cevap çağrısı. */
