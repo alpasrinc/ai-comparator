@@ -29,6 +29,9 @@ import com.example.aicomparator.dto.PromptParts;
 import com.example.aicomparator.dto.AiResponse;
 import com.example.aicomparator.dto.AiResult;
 import com.example.aicomparator.dto.CompareResponse;
+import com.example.aicomparator.dto.RetrievalResult;
+import com.example.aicomparator.dto.RetrievedChunk;
+import com.example.aicomparator.dto.ResponseIntensity;
 import com.example.aicomparator.dto.TokenUsage;
 import com.example.aicomparator.entity.AiProviderType;
 
@@ -40,6 +43,48 @@ class AiComparisonServiceTests {
     @AfterEach
     void closeExecutor() {
         executor.close();
+    }
+
+    private static DocumentRetrievalService noRetrieval() {
+        DocumentRetrievalService service = mock(DocumentRetrievalService.class);
+        when(service.retrieve(any(), any())).thenReturn(RetrievalResult.NONE);
+        return service;
+    }
+
+    @Test
+    void sendsTheSameRetrievedSourcesToEveryProvider() {
+        AiProvider openAi = mock(AiProvider.class);
+        when(openAi.getProviderType()).thenReturn(AiProviderType.OPENAI);
+        when(openAi.sendMessage(any(PromptParts.class), any()))
+                .thenReturn(new AiResult("cevap", TokenUsage.EMPTY));
+
+        ConversationService conversationService =
+                mock(ConversationService.class);
+        DocumentRetrievalService retrievalService =
+                mock(DocumentRetrievalService.class);
+        RetrievedChunk chunk = new RetrievedChunk(
+                1L, 1L, "belge.pdf", 0, "KAYNAK METNI", 0.9);
+
+        when(retrievalService.retrieve(eq(7L), any()))
+                .thenReturn(new RetrievalResult(List.of(chunk), false));
+        when(conversationService.buildActiveContextPrompt(
+                any(), any(), any(), any()))
+                .thenReturn(new PromptParts(
+                        "PREFIX", "KAYNAK METNI\n\nUSER: s"));
+        when(conversationService.saveContinuation(any(), any(), anyList()))
+                .thenReturn(new CompareResponse(7L, 2L, List.of()));
+
+        AiComparisonService service = new AiComparisonService(
+                List.of(openAi), executor, conversationService,
+                retrievalService, new SseSupport(), 5);
+
+        service.compare(7L, "Merhaba", List.of(AiProviderType.OPENAI),
+                ResponseIntensity.MEDIUM);
+
+        verify(conversationService).buildActiveContextPrompt(
+                eq(7L), eq("Merhaba"), eq(AiProviderType.OPENAI),
+                eq(List.of(chunk)));
+        verify(conversationService).saveSources(eq(2L), eq(List.of(chunk)));
     }
 
     @Test
@@ -67,6 +112,7 @@ class AiComparisonServiceTests {
                 List.of(openAi, anthropic, gemini),
                 executor,
                 conversationService,
+                noRetrieval(),
                 new SseSupport(),
                 5
         );
@@ -110,6 +156,7 @@ class AiComparisonServiceTests {
                 List.of(openAi, anthropic, gemini),
                 executor,
                 conversationService,
+                noRetrieval(),
                 new SseSupport(),
                 5
         );
@@ -153,6 +200,7 @@ class AiComparisonServiceTests {
                 List.of(slowProvider),
                 executor,
                 conversationService,
+                noRetrieval(),
                 new SseSupport(),
                 0
         );
@@ -181,6 +229,7 @@ class AiComparisonServiceTests {
                 List.of(slowProvider),
                 executor,
                 conversationService,
+                noRetrieval(),
                 new SseSupport(),
                 0
         );
@@ -205,6 +254,7 @@ class AiComparisonServiceTests {
                 List.of(failing),
                 executor,
                 conversationService,
+                noRetrieval(),
                 new SseSupport(),
                 5
         );
@@ -251,6 +301,7 @@ class AiComparisonServiceTests {
                 List.of(streamingProvider),
                 executor,
                 conversationService,
+                noRetrieval(),
                 new SseSupport(),
                 5
         );
@@ -285,6 +336,7 @@ class AiComparisonServiceTests {
                 List.of(provider),
                 executor,
                 conversationService,
+                noRetrieval(),
                 new SseSupport(),
                 5
         );

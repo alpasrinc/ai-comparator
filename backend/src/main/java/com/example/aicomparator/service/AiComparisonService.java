@@ -23,6 +23,7 @@ import com.example.aicomparator.dto.PromptParts;
 import com.example.aicomparator.dto.AiResult;
 import com.example.aicomparator.dto.CompareResponse;
 import com.example.aicomparator.dto.ResponseIntensity;
+import com.example.aicomparator.dto.RetrievalResult;
 import com.example.aicomparator.dto.TokenUsage;
 import com.example.aicomparator.dto.StreamDoneEvent;
 import com.example.aicomparator.dto.StreamErrorEvent;
@@ -39,6 +40,7 @@ public class AiComparisonService {
     private final List<AiProvider> providers;
     private final ExecutorService aiExecutor;
     private final ConversationService conversationService;
+    private final DocumentRetrievalService retrievalService;
     private final SseSupport sseSupport;
     private final long requestTimeoutSeconds;
 
@@ -46,6 +48,7 @@ public class AiComparisonService {
             List<AiProvider> providers,
             ExecutorService aiExecutor,
             ConversationService conversationService,
+            DocumentRetrievalService retrievalService,
             SseSupport sseSupport,
             @Value("${ai.request-timeout-seconds:30}")
             long requestTimeoutSeconds
@@ -55,6 +58,7 @@ public class AiComparisonService {
                 .toList();
         this.aiExecutor = aiExecutor;
         this.conversationService = conversationService;
+        this.retrievalService = retrievalService;
         this.sseSupport = sseSupport;
         this.requestTimeoutSeconds = requestTimeoutSeconds;
     }
@@ -87,6 +91,8 @@ public class AiComparisonService {
         List<AiProvider> selectedProviders = selectProviders(
                 requestedProviderTypes
         );
+        RetrievalResult retrieval =
+                retrievalService.retrieve(conversationId, userMessage);
 
         List<CompletableFuture<AiResponse>> responseFutures =
                 selectedProviders.stream()
@@ -99,7 +105,7 @@ public class AiComparisonService {
                                                 conversationId,
                                                 userMessage,
                                                 provider.getProviderType(),
-                                                List.of()
+                                                retrieval.chunks()
                                         ),
                                 effectiveIntensity
                         ))
@@ -109,17 +115,20 @@ public class AiComparisonService {
                 .map(CompletableFuture::join)
                 .toList();
 
-        if (conversationId == null) {
-            return conversationService.saveComparison(
-                    userMessage,
-                    responses
-            );
-        }
+        CompareResponse saved = conversationId == null
+                ? conversationService.saveComparison(userMessage, responses)
+                : conversationService.saveContinuation(
+                        conversationId, userMessage, responses);
 
-        return conversationService.saveContinuation(
-                conversationId,
-                userMessage,
-                responses
+        conversationService.saveSources(
+                saved.userMessageId(), retrieval.chunks());
+
+        return new CompareResponse(
+                saved.conversationId(),
+                saved.userMessageId(),
+                saved.responses(),
+                retrieval.chunks(),
+                retrieval.unavailable()
         );
     }
 
@@ -210,6 +219,12 @@ public class AiComparisonService {
                         userMessage
                 );
 
+        RetrievalResult retrieval = retrievalService.retrieve(
+                turn.conversationId(), userMessage);
+
+        conversationService.saveSources(
+                turn.userMessageId(), retrieval.chunks());
+
         Object emitterLock = new Object();
 
         emitter.onTimeout(emitter::complete);
@@ -219,7 +234,11 @@ public class AiComparisonService {
                 emitter,
                 emitterLock,
                 "start",
-                new StreamStartEvent(turn.conversationId(), turn.userMessageId())
+                new StreamStartEvent(
+                        turn.conversationId(),
+                        turn.userMessageId(),
+                        retrieval.chunks(),
+                        retrieval.unavailable())
         );
 
         AtomicInteger remaining = new AtomicInteger(selectedProviders.size());
@@ -231,7 +250,7 @@ public class AiComparisonService {
                             turn.conversationId(),
                             userMessage,
                             provider.getProviderType(),
-                            List.of()
+                            retrieval.chunks()
                     );
 
             streamProvider(provider, providerPrompt, turn, effectiveIntensity,
