@@ -14,7 +14,16 @@
 
 ## Bağlam: iki uyarı
 
-**Bu plan `feat/stream-cancellation` branch'inin üstünde çalışmaz.** O branch'te akış iptali işi yarım kaldı (Task 3-10). Bu iş için `main`'den yeni bir branch aç.
+**Sıra önemli: önce akış iptali işi bitmeli.** `feat/stream-cancellation`
+branch'inde o iş yarım kaldı (Task 3-10 yapılmadı). Bu planın Task 3'ü ile o
+planın Task 3-4'ü **aynı iki dosyayı** ağır biçimde değiştiriyor —
+`AiComparisonService` ve `DebateOrchestrator`. İkisini paralel branch'lerde
+yürütmek kaçınılmaz ve zahmetli bir merge çakışması üretir.
+
+Doğru sıra: akış iptali paketini bitir, `main`'e al, sonra bu planı onun
+üstünden başlat. Bu spec ve plan `feat/stream-cancellation` üzerinde
+commit'lendi, dolayısıyla o branch merge edildiğinde `main`'e kendiliğinden
+gelir.
 
 **Münazara modu kapsam dışı.** `DebatePromptBuilder.buildCritiqueRoundPrompt` yalnızca bir önceki turu gönderiyor, tam transcript'i değil — yani büyüyen prefix yok, cache'lenecek bir şey yok. Münazara `PromptParts.volatileOnly(...)` ile geçer. Bunu "eksik" sanıp düzeltmeye çalışma.
 
