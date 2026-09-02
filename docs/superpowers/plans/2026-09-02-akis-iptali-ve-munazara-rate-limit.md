@@ -333,6 +333,28 @@ git add backend/src/main/java/com/example/aicomparator/service/StreamSession.jav
 git commit -m "feat(sse): add StreamSession with client-gone cancellation"
 ```
 
+### Uygulama sonrası not (kod incelemesiyle genişletildi)
+
+Teslim edilen `StreamSession`, yukarıdaki taslağın ötesine geçti (commit'ler
+`f7f8dad` → `6dfa557` → `3ec9d84`, 10 test). Sonraki görevleri etkileyen iki
+fark:
+
+1. **Ayrı bir `completed` bayrağı var.** `onCompletion` normal tamamlanmada da
+   tetiklendiği için, taslaktaki `onCompletion(this::cancel)` başarılı bir
+   koşudan sonra `isCancelled()`'ı `true` yapıyordu. Artık kendi
+   `complete()` çağrımız iptal sayılmıyor. Bu önemli: `CANCELLED` durumunu
+   yazan kontrol tam da bu bayrağı okuyor.
+2. **İki soru ayrıldı.** `isCancelled()` dar anlamda "istemci gitti" demek —
+   kalıcı durum kararı bununla verilir. `abortIfCancelled()` ise *iptal veya
+   tamamlanma* durumunda fırlatır: akışın alıcısı kalmadıysa sağlayıcı
+   çağrısı kesilmeli, sebebi ne olursa olsun. `orTimeout` ile öldürülmüş ama
+   arka planda akmaya devam eden bir sağlayıcı bu sayede susturuluyor.
+3. `send()` içindeki geniş `catch (Exception)` daraltıldı: `IOException` =
+   istemci gitti (iptal); cause'lu `IllegalStateException` = serileştirme
+   hatası (yalnızca o frame düşer, akış yaşar); cause'suz = emitter zaten
+   tamamlanmış. `send()` hiçbir durumda fırlatmaz — token callback'lerinden
+   çağrıldığı için fırlarsa sağlayıcı akışını sarsardı.
+
 ---
 
 ## Task 3: `DebateOrchestrator` iptal kontrol noktaları
