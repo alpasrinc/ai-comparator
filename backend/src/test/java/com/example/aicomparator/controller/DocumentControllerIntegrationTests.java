@@ -98,7 +98,11 @@ class DocumentControllerIntegrationTests {
         mockMvc().perform(
                         multipart("/api/conversations/{id}/documents",
                                 conversationId).file(file))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                // Sebep istemciye ulaşmalı; aksi hâlde kullanıcı neyi
+                // düzelteceğini bilemez (spring.mvc.problemdetails.enabled).
+                .andExpect(jsonPath("$.detail")
+                        .value("Yalnızca PDF, .txt ve .md desteklenir."));
     }
 
     private Long newConversation() {
