@@ -11,10 +11,17 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.example.aicomparator.dto.AiResponse;
 import com.example.aicomparator.dto.CompareResponse;
+import com.example.aicomparator.dto.PromptParts;
+import com.example.aicomparator.dto.ResponseIntensity;
+import com.example.aicomparator.dto.RetrievedChunk;
 import com.example.aicomparator.entity.AiProviderType;
+import com.example.aicomparator.entity.Document;
+import com.example.aicomparator.entity.DocumentChunk;
 import com.example.aicomparator.entity.Message;
 import com.example.aicomparator.entity.MessageRole;
 import com.example.aicomparator.repository.ConversationRepository;
+import com.example.aicomparator.repository.DocumentChunkRepository;
+import com.example.aicomparator.repository.DocumentRepository;
 import com.example.aicomparator.repository.MessageRepository;
 
 @SpringBootTest
@@ -29,6 +36,12 @@ class ConversationServiceIntegrationTests {
 
     @Autowired
     private MessageRepository messageRepository;
+
+    @Autowired
+    private DocumentRepository documentRepository;
+
+    @Autowired
+    private DocumentChunkRepository documentChunkRepository;
 
     @Test
     void shouldSaveComparisonWithUserAndAssistantMessages() {
@@ -128,7 +141,7 @@ void shouldContinueFromSelectedAssistantMessage() {
                     firstComparison.conversationId(),
                     "Bir örnek verir misin?",
                     AiProviderType.OPENAI
-            );
+            ).joined();
 
     assertThat(contextPrompt)
             .contains(
@@ -289,7 +302,7 @@ void shouldLabelHistoricalResponsesWithProviderNameInRetryPrompt() {
             continuation.conversationId(),
             continuation.userMessageId(),
             AiProviderType.GEMINI
-    );
+    ).joined();
 
     assertThat(retryPrompt)
             .contains(
@@ -380,4 +393,200 @@ void shouldDeleteConversationWithAllMessages() {
             ))
             .isEmpty();
 }
+
+    @Test
+    void cacheablePrefixGrowsAsAStrictPrefixAcrossTurns() {
+        CompareResponse firstTurn = conversationService.saveComparison(
+                "Java nedir?",
+                List.of(new AiResponse(null, "ANTHROPIC", "Java bir dildir."))
+        );
+        conversationService.selectActiveMessage(
+                firstTurn.conversationId(),
+                firstTurn.responses().get(0).messageId()
+        );
+
+        PromptParts turnTwo = conversationService.buildActiveContextPrompt(
+                firstTurn.conversationId(),
+                "Örnek verir misin?",
+                AiProviderType.ANTHROPIC
+        );
+
+        CompareResponse secondTurn = conversationService.saveContinuation(
+                firstTurn.conversationId(),
+                "Örnek verir misin?",
+                List.of(new AiResponse(null, "ANTHROPIC", "Şöyle: ..."))
+        );
+        conversationService.selectActiveMessage(
+                firstTurn.conversationId(),
+                secondTurn.responses().get(0).messageId()
+        );
+
+        PromptParts turnThree = conversationService.buildActiveContextPrompt(
+                firstTurn.conversationId(),
+                "Peki ya performans?",
+                AiProviderType.ANTHROPIC
+        );
+
+        // Cache'in çalışmasının tek şartı: önceki prefix, sonrakinin
+        // byte-byte öneki olmalı.
+        assertThat(turnThree.cacheablePrefix())
+                .startsWith(turnTwo.cacheablePrefix())
+                .isNotEqualTo(turnTwo.cacheablePrefix());
+    }
+
+    @Test
+    void cacheablePrefixDoesNotDependOnIntensity() {
+        CompareResponse turn = conversationService.saveComparison(
+                "Java nedir?",
+                List.of(new AiResponse(null, "ANTHROPIC", "Java bir dildir."))
+        );
+        conversationService.selectActiveMessage(
+                turn.conversationId(),
+                turn.responses().get(0).messageId()
+        );
+
+        PromptParts parts = conversationService.buildActiveContextPrompt(
+                turn.conversationId(),
+                "Örnek?",
+                AiProviderType.ANTHROPIC
+        );
+
+        // Yoğunluk yönergesi prefix'te olmamalı; onu ekleyen taraf
+        // volatileSuffix üzerinde çalışır.
+        assertThat(parts.cacheablePrefix())
+                .doesNotContain("Kısa ve öz")
+                .doesNotContain("Kapsamlı ve detaylı");
+        assertThat(parts.volatileSuffix()).contains("Örnek?");
+        assertThat(ResponseIntensity.LOW.applyTo(parts.volatileSuffix()))
+                .startsWith("Kısa ve öz");
+    }
+
+    @Test
+    void retryPromptSharesTheCacheablePrefixOfTheOriginalTurn() {
+        CompareResponse firstTurn = conversationService.saveComparison(
+                "Java nedir?",
+                List.of(new AiResponse(null, "ANTHROPIC", "Java bir dildir."))
+        );
+        conversationService.selectActiveMessage(
+                firstTurn.conversationId(),
+                firstTurn.responses().get(0).messageId()
+        );
+
+        PromptParts continuation = conversationService.buildActiveContextPrompt(
+                firstTurn.conversationId(),
+                "Örnek verir misin?",
+                AiProviderType.ANTHROPIC
+        );
+
+        CompareResponse secondTurn = conversationService.saveContinuation(
+                firstTurn.conversationId(),
+                "Örnek verir misin?",
+                List.of(new AiResponse(null, "ANTHROPIC", "Şöyle: ..."))
+        );
+
+        PromptParts retry = conversationService.buildPromptForUserMessage(
+                firstTurn.conversationId(),
+                secondTurn.userMessageId(),
+                AiProviderType.ANTHROPIC
+        );
+
+        // "Tekrar dene" aynı dalı yeniden gönderir; aynı prefix'i okumalı ki
+        // ilk denemenin yazdığı cache'ten yararlanabilsin.
+        assertThat(retry.cacheablePrefix())
+                .isEqualTo(continuation.cacheablePrefix());
+    }
+
+    @Test
+    void retrievedSourcesNeverEnterTheCacheablePrefix() {
+        CompareResponse turn = conversationService.saveComparison(
+                "Java nedir?",
+                List.of(new AiResponse(null, "ANTHROPIC", "Java bir dildir."))
+        );
+        conversationService.selectActiveMessage(
+                turn.conversationId(),
+                turn.responses().get(0).messageId()
+        );
+
+        List<RetrievedChunk> sources = List.of(new RetrievedChunk(
+                1L, 1L, "belge.pdf", 3, "BELGE PARCASI", 0.9));
+
+        PromptParts withSources = conversationService.buildActiveContextPrompt(
+                turn.conversationId(), "soru", AiProviderType.ANTHROPIC, sources);
+        PromptParts withoutSources = conversationService.buildActiveContextPrompt(
+                turn.conversationId(), "soru", AiProviderType.ANTHROPIC, List.of());
+
+        assertThat(withSources.cacheablePrefix())
+                .isEqualTo(withoutSources.cacheablePrefix())
+                .doesNotContain("BELGE PARCASI");
+        assertThat(withSources.volatileSuffix()).contains("BELGE PARCASI");
+        assertThat(withSources.volatileSuffix()).contains("belge.pdf");
+    }
+
+    @Test
+    void theSourcesBlockIsOmittedWhenThereAreNoSources() {
+        CompareResponse turn = conversationService.saveComparison(
+                "Java nedir?",
+                List.of(new AiResponse(null, "ANTHROPIC", "Java bir dildir."))
+        );
+        conversationService.selectActiveMessage(
+                turn.conversationId(),
+                turn.responses().get(0).messageId()
+        );
+
+        PromptParts parts = conversationService.buildActiveContextPrompt(
+                turn.conversationId(), "soru", AiProviderType.ANTHROPIC, List.of());
+
+        assertThat(parts.volatileSuffix()).isEqualTo("USER: soru\n\nASSISTANT:");
+    }
+
+    @Test
+    void reopeningAConversationRestoresTheSourcesOfEachUserTurn() {
+        CompareResponse turn = conversationService.saveComparison(
+                "Belgede ne yazıyor?",
+                List.of(new AiResponse(null, "ANTHROPIC", "Şu yazıyor."))
+        );
+
+        Document document = documentRepository.save(new Document(
+                conversationRepository.findById(turn.conversationId())
+                        .orElseThrow(),
+                "belge.pdf",
+                "application/pdf",
+                1024L,
+                1
+        ));
+        DocumentChunk chunk = documentChunkRepository.save(new DocumentChunk(
+                document, 3, "BELGE PARCASI", new byte[4],
+                "text-embedding-3-small"));
+
+        conversationService.saveSources(
+                turn.userMessageId(),
+                List.of(new RetrievedChunk(
+                        chunk.getId(),
+                        document.getId(),
+                        "belge.pdf",
+                        3,
+                        "BELGE PARCASI",
+                        0.87
+                ))
+        );
+
+        var detail = conversationService.getConversation(turn.conversationId());
+
+        assertThat(detail.messages())
+                .filteredOn(message -> message.role().equals("USER"))
+                .singleElement()
+                .satisfies(message -> assertThat(message.sources())
+                        .singleElement()
+                        .satisfies(source -> {
+                            assertThat(source.filename()).isEqualTo("belge.pdf");
+                            assertThat(source.chunkIndex()).isEqualTo(3);
+                            assertThat(source.content())
+                                    .isEqualTo("BELGE PARCASI");
+                            assertThat(source.similarity()).isEqualTo(0.87);
+                        }));
+
+        assertThat(detail.messages())
+                .filteredOn(message -> message.role().equals("ASSISTANT"))
+                .allSatisfy(message -> assertThat(message.sources()).isEmpty());
+    }
 }

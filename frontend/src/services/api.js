@@ -199,6 +199,30 @@ export function deleteConversation(conversationId) {
   })
 }
 
+export function uploadDocument(conversationId, file) {
+  const body = new FormData()
+  body.append('file', file)
+
+  // Content-Type elle konmuyor: multipart sınırını tarayıcı ekliyor.
+  return request(`/api/conversations/${conversationId}/documents`, {
+    method: 'POST',
+    body,
+  })
+}
+
+export function listDocuments(conversationId) {
+  return request(`/api/conversations/${conversationId}/documents`)
+}
+
+export function deleteDocument(conversationId, documentId) {
+  return request(
+    `/api/conversations/${conversationId}/documents/${documentId}`,
+    {
+      method: 'DELETE',
+    },
+  )
+}
+
 export function retryProvider(conversationId, userMessageId, provider) {
   return request('/api/chat/retry', {
     method: 'POST',

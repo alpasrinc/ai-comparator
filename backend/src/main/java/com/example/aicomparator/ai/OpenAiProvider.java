@@ -5,6 +5,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 import com.example.aicomparator.dto.AiResult;
+import com.example.aicomparator.dto.PromptParts;
 import com.example.aicomparator.dto.ResponseIntensity;
 import com.example.aicomparator.dto.TokenUsage;
 import com.example.aicomparator.entity.AiProviderType;
@@ -16,6 +17,7 @@ import com.openai.client.okhttp.OpenAIOkHttpClient;
 import com.openai.core.http.StreamResponse;
 import com.openai.models.responses.Response;
 import com.openai.models.responses.ResponseCreateParams;
+import com.openai.models.responses.ResponseUsage;
 import com.openai.models.responses.ResponseStreamEvent;
 
 @Service
@@ -44,10 +46,13 @@ public class OpenAiProvider implements AiProvider {
     }
 
     @Override
-    public AiResult sendMessage(String message, ResponseIntensity intensity) {
+    public AiResult sendMessage(
+            PromptParts prompt,
+            ResponseIntensity intensity
+    ) {
         ResponseCreateParams params = ResponseCreateParams.builder()
                 .model(model)
-                .input(intensity.applyTo(message))
+                .input(renderPrompt(prompt, intensity))
                 .maxOutputTokens(intensity.scaleTokens(maxOutputTokens))
                 .build();
 
@@ -65,7 +70,7 @@ public class OpenAiProvider implements AiProvider {
         }
 
         TokenUsage usage = response.usage()
-                .map(u -> new TokenUsage(u.inputTokens(), u.outputTokens()))
+                .map(OpenAiProvider::usageOf)
                 .orElse(TokenUsage.EMPTY);
 
         return new AiResult(content, usage);
@@ -73,33 +78,46 @@ public class OpenAiProvider implements AiProvider {
 
     @Override
     public TokenUsage streamMessage(
-            String userMessage,
+            PromptParts prompt,
             ResponseIntensity intensity,
             Consumer<String> onToken
     ) {
-        return streamWithLimit(userMessage, intensity, onToken,
+        return streamWithLimit(prompt, intensity, onToken,
                 intensity.scaleTokens(maxOutputTokens));
     }
 
     @Override
     public TokenUsage streamSynthesisMessage(
-            String userMessage,
+            PromptParts prompt,
             ResponseIntensity intensity,
             Consumer<String> onToken
     ) {
-        return streamWithLimit(userMessage, intensity, onToken,
+        return streamWithLimit(prompt, intensity, onToken,
                 intensity.scaleTokens(synthesisMaxOutputTokens));
     }
 
+    /**
+     * Sağlayıcıya gidecek nihai metin. Yoğunluk yönergesi yalnızca
+     * değişken kuyruğa girer; prefix istekler arasında byte-byte aynı
+     * kalmalıdır.
+     */
+    private String renderPrompt(
+            PromptParts prompt,
+            ResponseIntensity intensity
+    ) {
+        return prompt.cacheablePrefix()
+                + intensity.applyTo(prompt.volatileSuffix());
+    }
+
     private TokenUsage streamWithLimit(
-            String userMessage,
+            PromptParts prompt,
             ResponseIntensity intensity,
             Consumer<String> onToken,
             long outputTokenLimit
     ) {
         ResponseCreateParams params = ResponseCreateParams.builder()
                 .model(model)
-                .input(intensity.applyTo(userMessage))
+                .input(renderPrompt(prompt, intensity))
                 .maxOutputTokens(outputTokenLimit)
                 .build();
 
@@ -115,12 +133,35 @@ public class OpenAiProvider implements AiProvider {
                         delta -> onToken.accept(delta.delta())
                 );
                 event.completed().ifPresent(done ->
-                        done.response().usage().ifPresent(u ->
-                                usage.set(new TokenUsage(
-                                        u.inputTokens(), u.outputTokens()))));
+                        done.response().usage().ifPresent(
+                                u -> usage.set(usageOf(u))));
             });
         }
 
         return usage.get();
     }
+
+    /**
+     * OpenAI'da cache açık işaretleme gerektirmez; tek yapılan, raporlanan
+     * cache okumasını kaydetmek.
+     *
+     * <p>Dikkat: OpenAI {@code inputTokens} hem cache'ten okunanları hem
+     * cache'e yazılanları <b>içerir</b>, Anthropic ise ikisini de hariç
+     * tutar. {@link TokenUsage} her sağlayıcıda tek bir anlam taşısın
+     * (girdi = ne okunan ne yazılan kalan) ve {@code totalTokens()} çift
+     * saymasın diye ikisi de burada çıkarılır.
+     */
+    private static TokenUsage usageOf(ResponseUsage usage) {
+        long cachedTokens = usage.inputTokensDetails().cachedTokens();
+        long cacheWriteTokens = usage.inputTokensDetails().cacheWriteTokens();
+
+        return new TokenUsage(
+                Math.max(0,
+                        usage.inputTokens() - cachedTokens - cacheWriteTokens),
+                usage.outputTokens(),
+                cachedTokens,
+                cacheWriteTokens
+        );
+    }
+
 }

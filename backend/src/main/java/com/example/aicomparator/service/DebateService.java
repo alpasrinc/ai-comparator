@@ -73,7 +73,8 @@ public class DebateService {
         Debate debate = requireDebate(debateId);
         DebateMessage message = debateMessageRepository.save(
                 DebateMessage.participant(debate, round, provider, content,
-                        usage.inputTokens(), usage.outputTokens())
+                        usage.inputTokens(), usage.outputTokens(),
+                        usage.cacheReadTokens(), usage.cacheWriteTokens())
         );
         return message.getId();
     }
@@ -98,7 +99,8 @@ public class DebateService {
         Debate debate = requireDebate(debateId);
         DebateMessage message = debateMessageRepository.save(
                 DebateMessage.synthesis(debate, provider, content,
-                        usage.inputTokens(), usage.outputTokens())
+                        usage.inputTokens(), usage.outputTokens(),
+                        usage.cacheReadTokens(), usage.cacheWriteTokens())
         );
         debate.complete();
         debateRepository.save(debate);
@@ -119,9 +121,16 @@ public class DebateService {
         debateRepository.save(debate);
     }
 
+    @Transactional
+    public void markCancelled(Long debateId) {
+        Debate debate = requireDebate(debateId);
+        debate.cancel();
+        debateRepository.save(debate);
+    }
+
     @Transactional(readOnly = true)
     public List<DebateSummaryResponse> listDebates() {
-        return debateRepository.findAllByOrderByUpdatedAtDesc().stream()
+        return debateRepository.findAllByOrderByUpdatedAtDescIdDesc().stream()
                 .map(debate -> new DebateSummaryResponse(
                         debate.getId(),
                         debate.getTopic(),
@@ -146,11 +155,7 @@ public class DebateService {
                                 message.getProvider().name(),
                                 message.getRole().name(),
                                 message.getContent(),
-                                new TokenUsage(
-                                        message.getInputTokens() == null
-                                                ? 0 : message.getInputTokens(),
-                                        message.getOutputTokens() == null
-                                                ? 0 : message.getOutputTokens())
+                                usageOf(message)
                         ))
                 .toList();
 
@@ -191,4 +196,18 @@ public class DebateService {
                         "Münazara bulunamadı."
                 ));
     }
+
+    private static TokenUsage usageOf(DebateMessage message) {
+        return new TokenUsage(
+                message.getInputTokens() == null
+                        ? 0 : message.getInputTokens(),
+                message.getOutputTokens() == null
+                        ? 0 : message.getOutputTokens(),
+                message.getCacheReadTokens() == null
+                        ? 0 : message.getCacheReadTokens(),
+                message.getCacheWriteTokens() == null
+                        ? 0 : message.getCacheWriteTokens()
+        );
+    }
+
 }

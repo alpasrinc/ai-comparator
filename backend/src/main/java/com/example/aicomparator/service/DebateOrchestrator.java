@@ -27,6 +27,7 @@ import com.example.aicomparator.dto.DebateRoundStartEvent;
 import com.example.aicomparator.dto.DebateStartEvent;
 import com.example.aicomparator.dto.DebateSynthesisDoneEvent;
 import com.example.aicomparator.dto.DebateTokenEvent;
+import com.example.aicomparator.dto.PromptParts;
 import com.example.aicomparator.dto.ResponseIntensity;
 import com.example.aicomparator.dto.TokenUsage;
 import com.example.aicomparator.entity.AiProviderType;
@@ -152,10 +153,12 @@ public class DebateOrchestrator {
 
         for (AiProviderType type : request.participants()) {
             AiProvider provider = resolveProvider(type);
-            String prompt = round == 1
+            // Münazarada büyüyen bir prefix yok: eleştiri turu yalnızca
+            // bir önceki turu taşır, cache'lenecek stabil kısım da yok.
+            PromptParts prompt = PromptParts.volatileOnly(round == 1
                     ? promptBuilder.buildFirstRoundPrompt(request.topic(), type)
                     : promptBuilder.buildCritiqueRoundPrompt(
-                            request.topic(), type, transcript);
+                            request.topic(), type, transcript));
 
             futures.add(streamParticipant(
                     debateId, round, type, provider, prompt, intensity,
@@ -177,7 +180,7 @@ public class DebateOrchestrator {
                     int round,
                     AiProviderType type,
                     AiProvider provider,
-                    String prompt,
+                    PromptParts prompt,
                     ResponseIntensity intensity,
                     SseEmitter emitter,
                     Object lock
@@ -231,8 +234,9 @@ public class DebateOrchestrator {
         AiProviderType synthType = request.synthesizer();
         AiProvider provider = resolveProvider(synthType);
         String name = synthType.name();
-        String prompt = promptBuilder.buildSynthesisPrompt(
-                request.topic(), transcript);
+        PromptParts prompt = PromptParts.volatileOnly(
+                promptBuilder.buildSynthesisPrompt(
+                        request.topic(), transcript));
 
         StringBuilder accumulated = new StringBuilder();
         AtomicReference<TokenUsage> usageRef =

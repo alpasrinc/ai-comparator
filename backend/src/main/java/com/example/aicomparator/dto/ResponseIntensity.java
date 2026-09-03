@@ -29,12 +29,16 @@ public enum ResponseIntensity {
     }
 
     /**
-     * Yoğunluk yönergesini kullanıcı mesajının başına ekler.
+     * Yoğunluk yönergesini prompt'un <b>değişken</b> kısmının başına ekler.
+     *
+     * <p>Bu metin asla cache'lenebilir prefix'e girmemeli: prefix'in başındaki
+     * bir değişiklik tüm cache'i geçersiz kılar, ve yoğunluk istek başına
+     * değişebilir.
      */
-    public String applyTo(String userMessage) {
+    public String applyTo(String volatilePart) {
         return directive.isBlank()
-                ? userMessage
-                : directive + "\n\n" + userMessage;
+                ? volatilePart
+                : directive + "\n\n" + volatilePart;
     }
 
     public static ResponseIntensity orDefault(ResponseIntensity value) {

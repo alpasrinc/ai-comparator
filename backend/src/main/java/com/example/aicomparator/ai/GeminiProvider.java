@@ -7,6 +7,7 @@ import jakarta.annotation.PreDestroy;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import com.example.aicomparator.dto.AiResult;
+import com.example.aicomparator.dto.PromptParts;
 import com.example.aicomparator.dto.ResponseIntensity;
 import com.example.aicomparator.dto.TokenUsage;
 import com.example.aicomparator.entity.AiProviderType;
@@ -42,7 +43,7 @@ public class GeminiProvider implements AiProvider {
 
     @Override
     public AiResult sendMessage(
-            String userMessage,
+            PromptParts prompt,
             ResponseIntensity intensity
     ) {
         GenerateContentConfig config = GenerateContentConfig.builder()
@@ -51,7 +52,7 @@ public class GeminiProvider implements AiProvider {
 
         GenerateContentResponse response = client.models.generateContent(
                 model,
-                intensity.applyTo(userMessage),
+                renderPrompt(prompt, intensity),
                 config
         );
 
@@ -66,26 +67,39 @@ public class GeminiProvider implements AiProvider {
 
     @Override
     public TokenUsage streamMessage(
-            String userMessage,
+            PromptParts prompt,
             ResponseIntensity intensity,
             Consumer<String> onToken
     ) {
-        return streamWithLimit(userMessage, intensity, onToken,
+        return streamWithLimit(prompt, intensity, onToken,
                 (int) intensity.scaleTokens(maxOutputTokens));
     }
 
     @Override
     public TokenUsage streamSynthesisMessage(
-            String userMessage,
+            PromptParts prompt,
             ResponseIntensity intensity,
             Consumer<String> onToken
     ) {
-        return streamWithLimit(userMessage, intensity, onToken,
+        return streamWithLimit(prompt, intensity, onToken,
                 (int) intensity.scaleTokens(synthesisMaxOutputTokens));
     }
 
+    /**
+     * Sağlayıcıya gidecek nihai metin. Yoğunluk yönergesi yalnızca
+     * değişken kuyruğa girer; prefix istekler arasında byte-byte aynı
+     * kalmalıdır.
+     */
+    private String renderPrompt(
+            PromptParts prompt,
+            ResponseIntensity intensity
+    ) {
+        return prompt.cacheablePrefix()
+                + intensity.applyTo(prompt.volatileSuffix());
+    }
+
     private TokenUsage streamWithLimit(
-            String userMessage,
+            PromptParts prompt,
             ResponseIntensity intensity,
             Consumer<String> onToken,
             int outputTokenLimit
@@ -100,7 +114,7 @@ public class GeminiProvider implements AiProvider {
                 ResponseStream<GenerateContentResponse> stream =
                         client.models.generateContentStream(
                                 model,
-                                intensity.applyTo(userMessage),
+                                renderPrompt(prompt, intensity),
                                 config
                         )
         ) {
@@ -121,11 +135,29 @@ public class GeminiProvider implements AiProvider {
         return usage;
     }
 
+    /**
+     * Gemini'de cache implicit çalışır; tek yapılan raporlanan okumayı
+     * kaydetmek.
+     *
+     * <p>Dikkat: {@code promptTokenCount} cache'ten okunanları
+     * <b>içerir</b>, Anthropic'in {@code input_tokens} alanı ise
+     * içermez. {@link TokenUsage} tek bir anlam taşısın diye
+     * (girdi = cache'lenmemiş kalan) burada çıkarılır.
+     */
     private TokenUsage extractUsage(GenerateContentResponse response) {
         return response.usageMetadata()
-                .map(meta -> new TokenUsage(
-                        meta.promptTokenCount().orElse(0),
-                        meta.candidatesTokenCount().orElse(0)))
+                .map(meta -> {
+                    long cachedTokens =
+                            meta.cachedContentTokenCount().orElse(0);
+
+                    return new TokenUsage(
+                            Math.max(0, meta.promptTokenCount().orElse(0)
+                                    - cachedTokens),
+                            meta.candidatesTokenCount().orElse(0),
+                            cachedTokens,
+                            0
+                    );
+                })
                 .orElse(TokenUsage.EMPTY);
     }
 

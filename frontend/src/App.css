@@ -2385,6 +2385,14 @@
   color: #64748b;
 }
 
+.token-usage__part--cache {
+  color: #7dd3fc;
+}
+
+.token-usage__part--cache em {
+  color: #38bdf8;
+}
+
 .token-usage__part--total {
   color: #e2e8f0;
   font-weight: 700;
@@ -2396,4 +2404,124 @@
 
 .token-usage__sep {
   color: #334155;
+}
+
+.document-uploader {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.document-uploader__button {
+  padding: 7px 12px;
+  color: #cbd5e1;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid #26344d;
+  border-radius: 9px;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.document-uploader__button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.document-uploader__error {
+  width: 100%;
+  margin: 0;
+  color: #fca5a5;
+  font-size: 0.75rem;
+}
+
+.document-uploader__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.document-uploader__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  color: #cbd5e1;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid #26344d;
+  border-radius: 999px;
+  font-size: 0.72rem;
+}
+
+.document-uploader__count {
+  color: #64748b;
+}
+
+.document-uploader__chip button {
+  color: #94a3b8;
+  background: none;
+  border: none;
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.source-list {
+  margin: 12px 0;
+  padding: 9px 12px;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid #26344d;
+  border-radius: 9px;
+  font-size: 0.76rem;
+}
+
+.source-list--warning {
+  color: #fbbf24;
+  border-color: #78350f;
+}
+
+.source-list__summary {
+  color: #cbd5e1;
+  cursor: pointer;
+}
+
+.source-list__items {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+
+.source-list__item {
+  padding-left: 10px;
+  border-left: 2px solid #26344d;
+}
+
+.source-list__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  color: #64748b;
+  font-variant-numeric: tabular-nums;
+}
+
+.source-list__badge {
+  color: #7dd3fc;
+  font-weight: 700;
+}
+
+.source-list__file {
+  color: #cbd5e1;
+}
+
+.source-list__excerpt {
+  margin: 4px 0 0;
+  color: #94a3b8;
+  line-height: 1.5;
 }

@@ -19,9 +19,11 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import com.example.aicomparator.ai.AiProvider;
 import com.example.aicomparator.dto.AiResponse;
+import com.example.aicomparator.dto.PromptParts;
 import com.example.aicomparator.dto.AiResult;
 import com.example.aicomparator.dto.CompareResponse;
 import com.example.aicomparator.dto.ResponseIntensity;
+import com.example.aicomparator.dto.RetrievalResult;
 import com.example.aicomparator.dto.TokenUsage;
 import com.example.aicomparator.dto.StreamDoneEvent;
 import com.example.aicomparator.dto.StreamErrorEvent;
@@ -38,6 +40,7 @@ public class AiComparisonService {
     private final List<AiProvider> providers;
     private final ExecutorService aiExecutor;
     private final ConversationService conversationService;
+    private final DocumentRetrievalService retrievalService;
     private final SseSupport sseSupport;
     private final long requestTimeoutSeconds;
 
@@ -45,6 +48,7 @@ public class AiComparisonService {
             List<AiProvider> providers,
             ExecutorService aiExecutor,
             ConversationService conversationService,
+            DocumentRetrievalService retrievalService,
             SseSupport sseSupport,
             @Value("${ai.request-timeout-seconds:30}")
             long requestTimeoutSeconds
@@ -54,6 +58,7 @@ public class AiComparisonService {
                 .toList();
         this.aiExecutor = aiExecutor;
         this.conversationService = conversationService;
+        this.retrievalService = retrievalService;
         this.sseSupport = sseSupport;
         this.requestTimeoutSeconds = requestTimeoutSeconds;
     }
@@ -86,17 +91,21 @@ public class AiComparisonService {
         List<AiProvider> selectedProviders = selectProviders(
                 requestedProviderTypes
         );
+        RetrievalResult retrieval =
+                retrievalService.retrieve(conversationId, userMessage);
 
         List<CompletableFuture<AiResponse>> responseFutures =
                 selectedProviders.stream()
                         .map(provider -> requestProvider(
                                 provider,
                                 conversationId == null
-                                        ? userMessage
+                                        ? PromptParts.volatileOnly(
+                                                userMessage)
                                         : conversationService.buildActiveContextPrompt(
                                                 conversationId,
                                                 userMessage,
-                                                provider.getProviderType()
+                                                provider.getProviderType(),
+                                                retrieval.chunks()
                                         ),
                                 effectiveIntensity
                         ))
@@ -106,17 +115,20 @@ public class AiComparisonService {
                 .map(CompletableFuture::join)
                 .toList();
 
-        if (conversationId == null) {
-            return conversationService.saveComparison(
-                    userMessage,
-                    responses
-            );
-        }
+        CompareResponse saved = conversationId == null
+                ? conversationService.saveComparison(userMessage, responses)
+                : conversationService.saveContinuation(
+                        conversationId, userMessage, responses);
 
-        return conversationService.saveContinuation(
-                conversationId,
-                userMessage,
-                responses
+        conversationService.saveSources(
+                saved.userMessageId(), retrieval.chunks());
+
+        return new CompareResponse(
+                saved.conversationId(),
+                saved.userMessageId(),
+                saved.responses(),
+                retrieval.chunks(),
+                retrieval.unavailable()
         );
     }
 
@@ -127,7 +139,7 @@ public class AiComparisonService {
     ) {
         AiProvider provider = resolveProvider(providerType);
 
-        String prompt = conversationService.buildPromptForUserMessage(
+        PromptParts prompt = conversationService.buildPromptForUserMessage(
                 conversationId,
                 userMessageId,
                 providerType
@@ -162,7 +174,9 @@ public class AiComparisonService {
         AiProvider provider = resolveProvider(providerType);
 
         return requestProvider(
-                provider, message, ResponseIntensity.orDefault(intensity)
+                provider,
+                PromptParts.volatileOnly(message),
+                ResponseIntensity.orDefault(intensity)
         ).join();
     }
 
@@ -205,6 +219,12 @@ public class AiComparisonService {
                         userMessage
                 );
 
+        RetrievalResult retrieval = retrievalService.retrieve(
+                turn.conversationId(), userMessage);
+
+        conversationService.saveSources(
+                turn.userMessageId(), retrieval.chunks());
+
         Object emitterLock = new Object();
 
         emitter.onTimeout(emitter::complete);
@@ -214,18 +234,23 @@ public class AiComparisonService {
                 emitter,
                 emitterLock,
                 "start",
-                new StreamStartEvent(turn.conversationId(), turn.userMessageId())
+                new StreamStartEvent(
+                        turn.conversationId(),
+                        turn.userMessageId(),
+                        retrieval.chunks(),
+                        retrieval.unavailable())
         );
 
         AtomicInteger remaining = new AtomicInteger(selectedProviders.size());
 
         for (AiProvider provider : selectedProviders) {
-            String providerPrompt = conversationId == null
-                    ? userMessage
+            PromptParts providerPrompt = conversationId == null
+                    ? PromptParts.volatileOnly(userMessage)
                     : conversationService.buildActiveContextPrompt(
                             turn.conversationId(),
                             userMessage,
-                            provider.getProviderType()
+                            provider.getProviderType(),
+                            retrieval.chunks()
                     );
 
             streamProvider(provider, providerPrompt, turn, effectiveIntensity,
@@ -235,7 +260,7 @@ public class AiComparisonService {
 
     private void streamProvider(
             AiProvider provider,
-            String prompt,
+            PromptParts prompt,
             ConversationService.UserTurnResult turn,
             ResponseIntensity intensity,
             SseEmitter emitter,
@@ -376,7 +401,7 @@ public class AiComparisonService {
 
     private CompletableFuture<AiResponse> requestProvider(
             AiProvider provider,
-            String prompt,
+            PromptParts prompt,
             ResponseIntensity intensity
     ) {
         String providerName = provider.getProviderType().name();

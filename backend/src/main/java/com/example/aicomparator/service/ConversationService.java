@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import com.example.aicomparator.dto.PromptParts;
 import com.example.aicomparator.dto.ConversationDetailResponse;
 import com.example.aicomparator.dto.ConversationSummaryResponse;
 import com.example.aicomparator.dto.MessageHistoryResponse;
@@ -17,12 +18,17 @@ import com.example.aicomparator.dto.ActiveMessageResponse;
 import com.example.aicomparator.dto.AiResponse;
 import com.example.aicomparator.dto.CompareResponse;
 import com.example.aicomparator.dto.TokenUsage;
+import com.example.aicomparator.dto.RetrievedChunk;
 import com.example.aicomparator.entity.AiProviderType;
 import com.example.aicomparator.entity.Conversation;
+import com.example.aicomparator.entity.DocumentChunk;
 import com.example.aicomparator.entity.Message;
 import com.example.aicomparator.entity.MessageRole;
+import com.example.aicomparator.entity.MessageSource;
 import com.example.aicomparator.repository.ConversationRepository;
+import com.example.aicomparator.repository.DocumentChunkRepository;
 import com.example.aicomparator.repository.MessageRepository;
+import com.example.aicomparator.repository.MessageSourceRepository;
 
 @Service
 public class ConversationService {
@@ -34,13 +40,19 @@ public class ConversationService {
 
     private final ConversationRepository conversationRepository;
     private final MessageRepository messageRepository;
+    private final MessageSourceRepository messageSourceRepository;
+    private final DocumentChunkRepository documentChunkRepository;
 
     public ConversationService(
             ConversationRepository conversationRepository,
-            MessageRepository messageRepository
+            MessageRepository messageRepository,
+            MessageSourceRepository messageSourceRepository,
+            DocumentChunkRepository documentChunkRepository
     ) {
         this.conversationRepository = conversationRepository;
         this.messageRepository = messageRepository;
+        this.messageSourceRepository = messageSourceRepository;
+        this.documentChunkRepository = documentChunkRepository;
     }
 
     @Transactional
@@ -154,11 +166,18 @@ public class ConversationService {
         );
     }
 
+    /**
+     * Aktif dalın bağlam prompt'unu cache açısından ikiye ayırarak kurar.
+     *
+     * <p>Prefix her turda yalnızca sonuna ekleme alır, öncesi byte-byte
+     * aynı kalır; sağlayıcının prompt cache'i bunu okuyabilir.
+     */
     @Transactional(readOnly = true)
-    public String buildActiveContextPrompt(
+    public PromptParts buildActiveContextPrompt(
             Long conversationId,
             String newUserContent,
-            AiProviderType targetProvider
+            AiProviderType targetProvider,
+            List<RetrievedChunk> sources
     ) {
         Conversation conversation = findConversation(conversationId);
         Message currentMessage = conversation.getActiveMessage();
@@ -179,17 +198,26 @@ public class ConversationService {
 
         Collections.reverse(activeBranch);
 
-        StringBuilder prompt = new StringBuilder(
+        // Cache'lenebilir kısım: kimlik + o ana kadarki dal.
+        StringBuilder prefix = new StringBuilder(
                 identityPreamble(targetProvider)
         );
 
-        appendTranscript(prompt, activeBranch);
+        appendTranscript(prefix, activeBranch);
 
-        prompt.append("USER: ")
-                .append(newUserContent)
-                .append("\n\nASSISTANT:");
+        return new PromptParts(
+                prefix.toString(),
+                sourcesBlock(sources) + userTurn(newUserContent)
+        );
+    }
 
-        return prompt.toString();
+    public PromptParts buildActiveContextPrompt(
+            Long conversationId,
+            String newUserContent,
+            AiProviderType targetProvider
+    ) {
+        return buildActiveContextPrompt(
+                conversationId, newUserContent, targetProvider, List.of());
     }
 
     @Transactional
@@ -236,7 +264,9 @@ public class ConversationService {
                         AiProviderType.valueOf(response.provider()),
                         response.content(),
                         response.usage().inputTokens(),
-                        response.usage().outputTokens()
+                        response.usage().outputTokens(),
+                        response.usage().cacheReadTokens(),
+                        response.usage().cacheWriteTokens()
                 ))
                 .toList();
 
@@ -272,7 +302,7 @@ public class ConversationService {
     }
 
     @Transactional(readOnly = true)
-    public String buildPromptForUserMessage(
+    public PromptParts buildPromptForUserMessage(
             Long conversationId,
             Long userMessageId,
             AiProviderType targetProvider
@@ -291,7 +321,8 @@ public class ConversationService {
             );
         }
 
-        return buildBranchPrompt(userMessage, targetProvider);
+        return buildBranchPrompt(
+                userMessage, targetProvider, sourcesOf(userMessageId));
     }
 
     @Transactional
@@ -321,7 +352,9 @@ public class ConversationService {
                         AiProviderType.valueOf(response.provider()),
                         response.content(),
                         response.usage().inputTokens(),
-                        response.usage().outputTokens()
+                        response.usage().outputTokens(),
+                        response.usage().cacheReadTokens(),
+                        response.usage().cacheWriteTokens()
                 )
         );
 
@@ -335,18 +368,30 @@ public class ConversationService {
 
     private static TokenUsage usageOf(Message message) {
         return new TokenUsage(
-                message.getInputTokens() == null ? 0 : message.getInputTokens(),
+                message.getInputTokens() == null
+                        ? 0 : message.getInputTokens(),
                 message.getOutputTokens() == null
-                        ? 0 : message.getOutputTokens()
+                        ? 0 : message.getOutputTokens(),
+                message.getCacheReadTokens() == null
+                        ? 0 : message.getCacheReadTokens(),
+                message.getCacheWriteTokens() == null
+                        ? 0 : message.getCacheWriteTokens()
         );
     }
 
-    private String buildBranchPrompt(
-            Message lastMessage,
-            AiProviderType targetProvider
+    /**
+     * "Tekrar dene" yolunun prompt'u. Bölme noktası
+     * {@link #buildActiveContextPrompt} ile aynıdır: son kullanıcı mesajı
+     * değişken kısımda kalır, böylece yeniden deneme ilk denemenin yazdığı
+     * cache prefix'ini okur.
+     */
+    private PromptParts buildBranchPrompt(
+            Message lastUserMessage,
+            AiProviderType targetProvider,
+            List<RetrievedChunk> sources
     ) {
         List<Message> activeBranch = new ArrayList<>();
-        Message currentMessage = lastMessage;
+        Message currentMessage = lastUserMessage.getParentMessage();
 
         while (currentMessage != null) {
             activeBranch.add(currentMessage);
@@ -355,14 +400,81 @@ public class ConversationService {
 
         Collections.reverse(activeBranch);
 
-        StringBuilder prompt = new StringBuilder(
+        StringBuilder prefix = new StringBuilder(
                 identityPreamble(targetProvider)
         );
 
-        appendTranscript(prompt, activeBranch);
+        appendTranscript(prefix, activeBranch);
 
-        prompt.append("ASSISTANT:");
-        return prompt.toString();
+        return new PromptParts(
+                prefix.toString(),
+                sourcesBlock(sources) + userTurn(lastUserMessage.getContent())
+        );
+    }
+
+    private static String sourcesBlock(List<RetrievedChunk> sources) {
+        if (sources == null || sources.isEmpty()) {
+            return "";
+        }
+
+        StringBuilder block = new StringBuilder(
+                "Aşağıdaki kaynaklara dayanarak cevap ver. Kaynaklarda "
+                        + "olmayan bir şeyi uydurma; bilgi kaynaklarda yoksa "
+                        + "bunu söyle.\n\n");
+
+        int order = 1;
+
+        for (RetrievedChunk source : sources) {
+            block.append('[').append(order++).append("] ")
+                    .append(source.filename())
+                    .append(" (parça ").append(source.chunkIndex()).append(")\n")
+                    .append(source.content())
+                    .append("\n\n");
+        }
+
+        return block.toString();
+    }
+
+    @Transactional(readOnly = true)
+    public List<RetrievedChunk> sourcesOf(Long userMessageId) {
+        return messageSourceRepository.findByMessageId(userMessageId).stream()
+                .map(source -> new RetrievedChunk(
+                        source.getChunk().getId(),
+                        source.getChunk().getDocument().getId(),
+                        source.getChunk().getDocument().getFilename(),
+                        source.getChunk().getChunkIndex(),
+                        source.getChunk().getContent(),
+                        source.getSimilarity()
+                ))
+                .toList();
+    }
+
+    @Transactional
+    public void saveSources(Long userMessageId, List<RetrievedChunk> sources) {
+        if (sources.isEmpty()) {
+            return;
+        }
+
+        Message userMessage = messageRepository.findById(userMessageId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Kullanıcı mesajı bulunamadı."));
+
+        List<MessageSource> rows = new ArrayList<>(sources.size());
+
+        for (int i = 0; i < sources.size(); i++) {
+            RetrievedChunk source = sources.get(i);
+            DocumentChunk chunk = documentChunkRepository
+                    .getReferenceById(source.chunkId());
+            rows.add(new MessageSource(
+                    userMessage, chunk, source.similarity(), i));
+        }
+
+        messageSourceRepository.saveAll(rows);
+    }
+
+    /** Prompt'un değişken kuyruğu: yeni kullanıcı turu ve cevap çağrısı. */
+    private static String userTurn(String userContent) {
+        return "USER: " + userContent + "\n\nASSISTANT:";
     }
 
     private void appendTranscript(
@@ -425,7 +537,7 @@ public class ConversationService {
     @Transactional(readOnly = true)
 public List<ConversationSummaryResponse> getConversations() {
     return conversationRepository
-            .findAllByOrderByUpdatedAtDesc()
+            .findAllByOrderByUpdatedAtDescIdDesc()
             .stream()
             .map(conversation -> new ConversationSummaryResponse(
                     conversation.getId(),
@@ -457,7 +569,10 @@ public List<ConversationSummaryResponse> getConversations() {
                             : message.getProvider().name(),
                     message.getContent(),
                     message.getCreatedAt(),
-                    usageOf(message)
+                    usageOf(message),
+                    message.getRole() == MessageRole.USER
+                            ? sourcesOf(message.getId())
+                            : List.of()
             ))
             .toList();
 

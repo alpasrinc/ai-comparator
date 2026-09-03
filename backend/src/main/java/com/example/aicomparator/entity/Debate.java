@@ -85,6 +85,10 @@ public class Debate {
         this.status = DebateStatus.FAILED;
     }
 
+    public void cancel() {
+        this.status = DebateStatus.CANCELLED;
+    }
+
     @PrePersist
     void onCreate() {
         Instant now = Instant.now();

@@ -3,7 +3,6 @@ package com.example.aicomparator.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.doAnswer;
@@ -26,9 +25,13 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import com.example.aicomparator.ai.AiProvider;
+import com.example.aicomparator.dto.PromptParts;
 import com.example.aicomparator.dto.AiResponse;
 import com.example.aicomparator.dto.AiResult;
 import com.example.aicomparator.dto.CompareResponse;
+import com.example.aicomparator.dto.RetrievalResult;
+import com.example.aicomparator.dto.RetrievedChunk;
+import com.example.aicomparator.dto.ResponseIntensity;
 import com.example.aicomparator.dto.TokenUsage;
 import com.example.aicomparator.entity.AiProviderType;
 
@@ -40,6 +43,48 @@ class AiComparisonServiceTests {
     @AfterEach
     void closeExecutor() {
         executor.close();
+    }
+
+    private static DocumentRetrievalService noRetrieval() {
+        DocumentRetrievalService service = mock(DocumentRetrievalService.class);
+        when(service.retrieve(any(), any())).thenReturn(RetrievalResult.NONE);
+        return service;
+    }
+
+    @Test
+    void sendsTheSameRetrievedSourcesToEveryProvider() {
+        AiProvider openAi = mock(AiProvider.class);
+        when(openAi.getProviderType()).thenReturn(AiProviderType.OPENAI);
+        when(openAi.sendMessage(any(PromptParts.class), any()))
+                .thenReturn(new AiResult("cevap", TokenUsage.EMPTY));
+
+        ConversationService conversationService =
+                mock(ConversationService.class);
+        DocumentRetrievalService retrievalService =
+                mock(DocumentRetrievalService.class);
+        RetrievedChunk chunk = new RetrievedChunk(
+                1L, 1L, "belge.pdf", 0, "KAYNAK METNI", 0.9);
+
+        when(retrievalService.retrieve(eq(7L), any()))
+                .thenReturn(new RetrievalResult(List.of(chunk), false));
+        when(conversationService.buildActiveContextPrompt(
+                any(), any(), any(), any()))
+                .thenReturn(new PromptParts(
+                        "PREFIX", "KAYNAK METNI\n\nUSER: s"));
+        when(conversationService.saveContinuation(any(), any(), anyList()))
+                .thenReturn(new CompareResponse(7L, 2L, List.of()));
+
+        AiComparisonService service = new AiComparisonService(
+                List.of(openAi), executor, conversationService,
+                retrievalService, new SseSupport(), 5);
+
+        service.compare(7L, "Merhaba", List.of(AiProviderType.OPENAI),
+                ResponseIntensity.MEDIUM);
+
+        verify(conversationService).buildActiveContextPrompt(
+                eq(7L), eq("Merhaba"), eq(AiProviderType.OPENAI),
+                eq(List.of(chunk)));
+        verify(conversationService).saveSources(eq(2L), eq(List.of(chunk)));
     }
 
     @Test
@@ -67,6 +112,7 @@ class AiComparisonServiceTests {
                 List.of(openAi, anthropic, gemini),
                 executor,
                 conversationService,
+                noRetrieval(),
                 new SseSupport(),
                 5
         );
@@ -110,6 +156,7 @@ class AiComparisonServiceTests {
                 List.of(openAi, anthropic, gemini),
                 executor,
                 conversationService,
+                noRetrieval(),
                 new SseSupport(),
                 5
         );
@@ -125,9 +172,12 @@ class AiComparisonServiceTests {
                 .satisfies(response ->
                         assertThat(response.provider()).isEqualTo("OPENAI")
                 );
-        verify(openAi).sendMessage(eq("Merhaba"), any());
-        verify(anthropic, never()).sendMessage(anyString(), any());
-        verify(gemini, never()).sendMessage(anyString(), any());
+        verify(openAi).sendMessage(
+                eq(PromptParts.volatileOnly("Merhaba")), any());
+        verify(anthropic, never())
+                .sendMessage(any(PromptParts.class), any());
+        verify(gemini, never())
+                .sendMessage(any(PromptParts.class), any());
     }
 
     @Test
@@ -150,6 +200,7 @@ class AiComparisonServiceTests {
                 List.of(slowProvider),
                 executor,
                 conversationService,
+                noRetrieval(),
                 new SseSupport(),
                 0
         );
@@ -178,6 +229,7 @@ class AiComparisonServiceTests {
                 List.of(slowProvider),
                 executor,
                 conversationService,
+                noRetrieval(),
                 new SseSupport(),
                 0
         );
@@ -202,6 +254,7 @@ class AiComparisonServiceTests {
                 List.of(failing),
                 executor,
                 conversationService,
+                noRetrieval(),
                 new SseSupport(),
                 5
         );
@@ -248,6 +301,7 @@ class AiComparisonServiceTests {
                 List.of(streamingProvider),
                 executor,
                 conversationService,
+                noRetrieval(),
                 new SseSupport(),
                 5
         );
@@ -270,7 +324,7 @@ class AiComparisonServiceTests {
         when(provider.getProviderType()).thenReturn(AiProviderType.ANTHROPIC);
         doThrow(new IllegalStateException("boom"))
                 .when(provider)
-                .streamMessage(anyString(), any(), any());
+                .streamMessage(any(PromptParts.class), any(), any());
 
         ConversationService conversationService =
                 mock(ConversationService.class);
@@ -282,6 +336,7 @@ class AiComparisonServiceTests {
                 List.of(provider),
                 executor,
                 conversationService,
+                noRetrieval(),
                 new SseSupport(),
                 5
         );
@@ -308,7 +363,7 @@ class AiComparisonServiceTests {
             }
 
             return TokenUsage.EMPTY;
-        }).when(provider).streamMessage(anyString(), any(), any());
+        }).when(provider).streamMessage(any(PromptParts.class), any(), any());
 
         return provider;
     }
@@ -319,7 +374,8 @@ class AiComparisonServiceTests {
     ) {
         AiProvider provider = mock(AiProvider.class);
         when(provider.getProviderType()).thenReturn(providerType);
-        when(provider.sendMessage(eq("Merhaba"), any()))
+        when(provider.sendMessage(
+                eq(PromptParts.volatileOnly("Merhaba")), any()))
                 .thenReturn(new AiResult(response, TokenUsage.EMPTY));
         return provider;
     }
@@ -327,7 +383,8 @@ class AiComparisonServiceTests {
     private AiProvider failingProvider(AiProviderType providerType) {
         AiProvider provider = mock(AiProvider.class);
         when(provider.getProviderType()).thenReturn(providerType);
-        when(provider.sendMessage(eq("Merhaba"), any()))
+        when(provider.sendMessage(
+                eq(PromptParts.volatileOnly("Merhaba")), any()))
                 .thenThrow(new IllegalStateException("API unavailable"));
         return provider;
     }

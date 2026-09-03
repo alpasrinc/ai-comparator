@@ -44,8 +44,20 @@ describe('buildDebateRequest', () => {
 describe('createRoundEntries', () => {
   it('her katılımcı için streaming boş entry üretir', () => {
     expect(createRoundEntries(['OPENAI', 'GEMINI'])).toEqual([
-      { provider: 'OPENAI', content: '', error: null, streaming: true },
-      { provider: 'GEMINI', content: '', error: null, streaming: true },
+      {
+        provider: 'OPENAI',
+        content: '',
+        error: null,
+        streaming: true,
+        usage: null,
+      },
+      {
+        provider: 'GEMINI',
+        content: '',
+        error: null,
+        streaming: true,
+        usage: null,
+      },
     ])
   })
 })
@@ -75,6 +87,7 @@ describe('normalizeDebateDetail', () => {
       content: 'ortak cevap',
       streaming: false,
       error: null,
+      usage: null,
     })
   })
 
