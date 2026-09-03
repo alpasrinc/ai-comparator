@@ -15,7 +15,12 @@ Bu yüzden iş, "işaretleyici koymak" değil, prompt'un **stabil kısmının fi
 Modeller bu projede en ucuz katmanda (`claude-haiku-4-5`, `gpt-5.6-luna`,
 `gemini-3.5-flash-lite`), dolayısıyla mutlak para kazancı küçüktür. İşin değeri
 doğru kurulmuş ve ölçülebilir olmasında: model yükseltilirse veya prompt'ları
-büyüten bir özellik (ör. RAG) eklenirse kazanç kendiliğinden büyür.
+büyüten bir özellik eklenirse kazanç kendiliğinden büyür.
+
+**Düzeltme (2026-09-02, RAG tasarımı sırasında):** RAG bu cümlenin örneği
+değil. RAG prompt'u büyütür ama büyüttüğü kısım `volatileSuffix` —
+cache'lenmeyen yarı. Cache kazancı transcript'in büyümesinden gelir, kaynak
+bloğundan değil.
 
 ## Kod incelemesinin bulguları
 

@@ -30,6 +30,8 @@ Uygulama iki moddan oluşur:
 - Tartışma sonunda seçilen bir sentezcinin daha uzun ortak cevabı yazması
 - Münazaraların MySQL'de saklanıp geçmişten yeniden açılması
 - Büyüyen konuşma bağlamı için prompt caching; cache token'larının ölçülüp rozette gösterilmesi
+- Konuşmaya PDF/metin belgesi yükleyip içeriği hakkında soru sorma (RAG); üç sağlayıcı da aynı kaynak parçalarına bakar
+- Cevabın dayandığı kaynak parçalarının benzerlik skoruyla gösterilmesi
 
 ## Mimari
 

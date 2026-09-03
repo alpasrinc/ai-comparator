@@ -59,6 +59,17 @@ The guard against silent regressions is `ConversationServiceIntegrationTests` as
 
 Note the Anthropic model matters: `claude-haiku-4-5` has a 4096-token minimum cacheable prefix (the highest tier), so caching only engages after roughly 8-10 turns. Below the threshold the breakpoint is silently inert and no write premium is charged.
 
+### RAG (compare mode only)
+Documents are uploaded **to a conversation** (`documents.conversation_id`), text-extracted (PDFBox for PDF), split into overlapping chunks by `TextChunker`, embedded by `OpenAiEmbeddingProvider` and stored as little-endian `float[]` in a `LONGBLOB`. There is no vector index: MySQL 8.4 has no `VECTOR` type, and because the candidate set is one conversation's chunks (hundreds, not millions), `DocumentRetrievalService` scores them in Java. Vectors are normalized at write time, so similarity is a plain dot product.
+
+`EmbeddingProvider` is a **separate seam** from `AiProvider` — Anthropic has no embedding model, so the three-providers-are-equal symmetry does not hold here. Every chunk stores its `embedding_model`; a mismatch at query time throws rather than silently comparing incomparable vectors.
+
+Retrieval runs **once per turn**, not once per provider, so all three see the same sources — otherwise the comparison isn't fair. Sources attach to the **user** message (`message_sources`), not the assistant messages.
+
+**Retrieved chunks go in `volatileSuffix`, never `cacheablePrefix`** — they change with every question, so putting them in the prefix would kill the prompt cache on every turn. `ConversationServiceIntegrationTests.retrievedSourcesNeverEnterTheCacheablePrefix` guards this. The retry path reads stored sources instead of re-retrieving, which keeps its prompt byte-identical to the first attempt.
+
+Query-time failures degrade (chat continues, `sourcesUnavailable` flag set and shown in the UI); a model mismatch fails loudly. The split is deliberate: transient failure degrades, correctness-corrupting failure stops.
+
 ### Streaming (SSE)
 Both stream endpoints emit `text/event-stream` frames (`event: <name>\ndata: <json>\n\n`). `SseSupport.send` wraps every emit in a per-emitter `synchronized` lock so parallel providers don't interleave frames. Frontend (`services/api.js`) reads the byte stream with `TextDecoder`, splits on `\n\n`, and **keeps the last fragment in a buffer** (it may be a half-frame) before `JSON.parse`. Event vocabularies differ by mode — compare: `start/token/done/error`; debate: `start/round-start/token/participant-done/participant-error/round-done/synthesis-done/done` (`round: 0` on a token means the synthesis stream).
 
@@ -66,10 +77,10 @@ Both stream endpoints emit `text/event-stream` frames (`event: <name>\ndata: <js
 An enum (LOW/MEDIUM/HIGH) that does two things at once: `scaleTokens()` multiplies the provider's max-output-tokens, and `applyTo()` prepends a brevity/detail instruction to the **volatile half** of the prompt (`PromptParts.volatileSuffix`), never to the whole thing — see Prompt caching. Passed through the whole call chain; the providers apply it, the prompt builders do not.
 
 ### Persistence
-Schema is owned by **Flyway** (`db/migration/V1..V5`), not Hibernate — `spring.jpa.hibernate.ddl-auto=none`. Enums are stored as `VARCHAR` text (`.name()`), not ordinals. `open-in-view=false`, so entities must be fully loaded inside `@Transactional` service methods before returning DTOs. Token usage columns were added in `V4`, prompt-cache token columns in `V5`.
+Schema is owned by **Flyway** (`db/migration/V1..V6`), not Hibernate — `spring.jpa.hibernate.ddl-auto=none`. Enums are stored as `VARCHAR` text (`.name()`), not ordinals. `open-in-view=false`, so entities must be fully loaded inside `@Transactional` service methods before returning DTOs. Token usage columns were added in `V4`, prompt-cache token columns in `V5`. RAG tables (`documents`, `document_chunks`, `message_sources`) were added in `V6`.
 
 ### Rate limiting
-`AiRateLimitFilter` is an in-memory per-IP token bucket guarding **only `/api/chat/**`** (the paid calls); returns 429 when exhausted. No external dependency.
+`AiRateLimitFilter` is an in-memory per-IP token bucket guarding the paid calls — the `ai.rate-limit.protected-paths` prefixes (`/api/chat/**`) plus `/api/conversations/*/documents**`, because uploading a document costs embedding calls; returns 429 when exhausted. No external dependency.
 
 ## Operational gotcha: two MySQL instances
 There is a Docker MySQL (what the app uses under `docker compose`, container port `mysql:3306`, **not** published to the host) and, on this dev machine, a separate local Windows MySQL84 service on `localhost:3306` with older data. A plain `mysql` client from PowerShell hits the local one — so "old records" usually means you queried the wrong database. To see the app's real data, exec into the container:

@@ -14,8 +14,10 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 /**
- * IP başına token-bucket rate limiter. Yalnızca ücretli AI çağrılarını
- * tetikleyen /api/chat/** uçlarını korur; ekstra bir bağımlılık gerektirmez.
+ * IP başına token-bucket rate limiter. Ücretli çağrı tetikleyen uçları korur:
+ * yapılandırmadaki /api/chat/** önekleri ve belge yükleme uçları
+ * (/api/conversations/*&#47;documents**, embedding çağrısı üretir).
+ * Ekstra bir bağımlılık gerektirmez.
  */
 @Component
 public class AiRateLimitFilter extends HttpFilter {
