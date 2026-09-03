@@ -81,7 +81,7 @@ class DocumentControllerIntegrationTests {
 
         mvc.perform(delete("/api/conversations/{id}/documents/{docId}",
                         conversationId, documentId))
-                .andExpect(status().isOk());
+                .andExpect(status().isNoContent());
 
         assertThat(documentRepository
                 .findByConversation_IdOrderByIdAsc(conversationId)).isEmpty();

@@ -4,14 +4,19 @@ import BranchTreePanel from './BranchTreePanel'
 import ChatInput from './ChatInput'
 import CompareProviderSelector from './CompareProviderSelector'
 import ConversationSidebar from './ConversationSidebar'
+import DocumentUploader from './DocumentUploader'
 import IntensitySelector from './IntensitySelector'
+import SourceList from './SourceList'
 import {
   deleteConversation,
+  deleteDocument,
   getConversation,
   getConversations,
+  listDocuments,
   retryProvider,
   selectActiveMessage,
   streamCompareMessage,
+  uploadDocument,
 } from '../services/api'
 
 const PROVIDERS = ['OPENAI', 'ANTHROPIC', 'GEMINI']
@@ -37,6 +42,9 @@ function CompareView({ backendStatus, backendError }) {
   const [selectedProviders, setSelectedProviders] = useState(PROVIDERS)
   const [intensity, setIntensity] = useState('MEDIUM')
   const [historyCollapsed, setHistoryCollapsed] = useState(false)
+  const [documents, setDocuments] = useState([])
+  const [sources, setSources] = useState([])
+  const [sourcesUnavailable, setSourcesUnavailable] = useState(false)
 
   useEffect(() => {
     getConversations()
@@ -50,6 +58,31 @@ function CompareView({ backendStatus, backendError }) {
         setIsLoadingConversations(false)
       })
   }, [])
+
+  useEffect(() => {
+    if (!conversationId) {
+      setDocuments([])
+      return
+    }
+
+    let cancelled = false
+
+    listDocuments(conversationId)
+      .then((loaded) => {
+        if (!cancelled) {
+          setDocuments(loaded)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setDocuments([])
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [conversationId])
 
   async function refreshConversations() {
     try {
@@ -74,6 +107,18 @@ function CompareView({ backendStatus, backendError }) {
       // Dallanma şeridi güncel veriyi gösteremeyebilir; ana akışı etkilemez.
       console.error('Konuşma detayı tazelenemedi:', requestError)
     }
+  }
+
+  async function handleUploadDocument(file) {
+    const uploaded = await uploadDocument(conversationId, file)
+    setDocuments((current) => [...current, uploaded])
+  }
+
+  async function handleDeleteDocument(documentId) {
+    await deleteDocument(conversationId, documentId)
+    setDocuments((current) =>
+      current.filter((document) => document.id !== documentId),
+    )
   }
 
   async function handleOpenConversation(selectedConversationId) {
@@ -120,6 +165,8 @@ function CompareView({ backendStatus, backendError }) {
       setSelectedMessageId(conversation.activeMessageId)
       setSelectedProvider(activeMessage?.provider ?? '')
       setConversationMessages(conversation.messages)
+      setSources(latestUserMessage?.sources ?? [])
+      setSourcesUnavailable(false)
     } catch (requestError) {
       setHistoryError(requestError.message)
     } finally {
@@ -139,6 +186,8 @@ function CompareView({ backendStatus, backendError }) {
     setHistoryError('')
     setConversationMessages([])
     setSelectedProviders(PROVIDERS)
+    setSources([])
+    setSourcesUnavailable(false)
   }
 
   function handleToggleProvider(provider) {
@@ -196,6 +245,8 @@ function CompareView({ backendStatus, backendError }) {
     )
     setSelectedProvider('')
     setUserMessageId(null)
+    setSources([])
+    setSourcesUnavailable(false)
     setComparisonError('')
     setSelectionError('')
     setIsLoading(true)
@@ -214,6 +265,8 @@ function CompareView({ backendStatus, backendError }) {
           resolvedConversationId = payload.conversationId
           setConversationId(payload.conversationId)
           setUserMessageId(payload.userMessageId)
+          setSources(payload.sources ?? [])
+          setSourcesUnavailable(payload.sourcesUnavailable ?? false)
         },
         token: ({ provider, delta }) => {
           setResponses((current) =>
@@ -481,6 +534,8 @@ function CompareView({ backendStatus, backendError }) {
           activeMessageId={selectedMessageId}
         />
 
+        <SourceList sources={sources} unavailable={sourcesUnavailable} />
+
         <section
           className={`ai-grid ai-grid--${selectedProviders.length}`}
           aria-label="Yapay zekâ cevapları"
@@ -516,6 +571,13 @@ function CompareView({ backendStatus, backendError }) {
           disabled={inputDisabled}
           isLoading={isLoading}
           providerCount={selectedProviders.length}
+        />
+
+        <DocumentUploader
+          documents={documents}
+          disabled={conversationId === null}
+          onUpload={handleUploadDocument}
+          onDelete={handleDeleteDocument}
         />
       </main>
     </div>
