@@ -569,7 +569,10 @@ public List<ConversationSummaryResponse> getConversations() {
                             : message.getProvider().name(),
                     message.getContent(),
                     message.getCreatedAt(),
-                    usageOf(message)
+                    usageOf(message),
+                    message.getRole() == MessageRole.USER
+                            ? sourcesOf(message.getId())
+                            : List.of()
             ))
             .toList();
 

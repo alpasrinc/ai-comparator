@@ -1,6 +1,7 @@
 package com.example.aicomparator.dto;
 
 import java.time.Instant;
+import java.util.List;
 
 public record MessageHistoryResponse(
         Long id,
@@ -9,6 +10,7 @@ public record MessageHistoryResponse(
         String provider,
         String content,
         Instant createdAt,
-        TokenUsage usage
+        TokenUsage usage,
+        List<RetrievedChunk> sources
 ) {
 }

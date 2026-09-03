@@ -15,9 +15,13 @@ import com.example.aicomparator.dto.PromptParts;
 import com.example.aicomparator.dto.ResponseIntensity;
 import com.example.aicomparator.dto.RetrievedChunk;
 import com.example.aicomparator.entity.AiProviderType;
+import com.example.aicomparator.entity.Document;
+import com.example.aicomparator.entity.DocumentChunk;
 import com.example.aicomparator.entity.Message;
 import com.example.aicomparator.entity.MessageRole;
 import com.example.aicomparator.repository.ConversationRepository;
+import com.example.aicomparator.repository.DocumentChunkRepository;
+import com.example.aicomparator.repository.DocumentRepository;
 import com.example.aicomparator.repository.MessageRepository;
 
 @SpringBootTest
@@ -32,6 +36,12 @@ class ConversationServiceIntegrationTests {
 
     @Autowired
     private MessageRepository messageRepository;
+
+    @Autowired
+    private DocumentRepository documentRepository;
+
+    @Autowired
+    private DocumentChunkRepository documentChunkRepository;
 
     @Test
     void shouldSaveComparisonWithUserAndAssistantMessages() {
@@ -527,5 +537,56 @@ void shouldDeleteConversationWithAllMessages() {
                 turn.conversationId(), "soru", AiProviderType.ANTHROPIC, List.of());
 
         assertThat(parts.volatileSuffix()).isEqualTo("USER: soru\n\nASSISTANT:");
+    }
+
+    @Test
+    void reopeningAConversationRestoresTheSourcesOfEachUserTurn() {
+        CompareResponse turn = conversationService.saveComparison(
+                "Belgede ne yazıyor?",
+                List.of(new AiResponse(null, "ANTHROPIC", "Şu yazıyor."))
+        );
+
+        Document document = documentRepository.save(new Document(
+                conversationRepository.findById(turn.conversationId())
+                        .orElseThrow(),
+                "belge.pdf",
+                "application/pdf",
+                1024L,
+                1
+        ));
+        DocumentChunk chunk = documentChunkRepository.save(new DocumentChunk(
+                document, 3, "BELGE PARCASI", new byte[4],
+                "text-embedding-3-small"));
+
+        conversationService.saveSources(
+                turn.userMessageId(),
+                List.of(new RetrievedChunk(
+                        chunk.getId(),
+                        document.getId(),
+                        "belge.pdf",
+                        3,
+                        "BELGE PARCASI",
+                        0.87
+                ))
+        );
+
+        var detail = conversationService.getConversation(turn.conversationId());
+
+        assertThat(detail.messages())
+                .filteredOn(message -> message.role().equals("USER"))
+                .singleElement()
+                .satisfies(message -> assertThat(message.sources())
+                        .singleElement()
+                        .satisfies(source -> {
+                            assertThat(source.filename()).isEqualTo("belge.pdf");
+                            assertThat(source.chunkIndex()).isEqualTo(3);
+                            assertThat(source.content())
+                                    .isEqualTo("BELGE PARCASI");
+                            assertThat(source.similarity()).isEqualTo(0.87);
+                        }));
+
+        assertThat(detail.messages())
+                .filteredOn(message -> message.role().equals("ASSISTANT"))
+                .allSatisfy(message -> assertThat(message.sources()).isEmpty());
     }
 }
